@@ -62,6 +62,10 @@ from .contacts import Contacts
 from .interface import RequestTimedOut
 from .ecc_fast import is_using_fast_ecc
 
+from .bip32 import deserialize_xpub
+from binascii import hexlify
+from .rpc import RPCHostOmni
+
 if TYPE_CHECKING:
     from .network import Network
     from .simple_config import SimpleConfig
@@ -199,6 +203,26 @@ class Abstract_Wallet(AddressSynchronizer):
         self.fiat_value            = storage.get('fiat_value', {})
         self.receive_requests      = storage.get('payment_requests', {})
 
+        # omni
+        self.omni                  = storage.get('omni', False)
+
+        if self.omni:
+            if self.use_change:
+                self.use_change = False
+                self.storage.put('use_change', False)
+
+            self.omni_decimal_point = storage.get('omni_decimal_point', 0)
+            self.omni_address = storage.get('omni_address', '')
+            if self.omni_address not in self.receiving_addresses:
+                self.add_receiving_address(self.omni_address)
+            self.omni_host = storage.get('omni_host', 'http://admin1:123@127.0.0.1:19401/')
+            self.omni_balance = storage.get('omni_balance', False)
+            self.omni_property = storage.get('omni_property', '1')
+            self.omni_code = storage.get('omni_code', 'OMNI')
+            self.omni_daemon = RPCHostOmni()
+            self.omni_daemon.set_url(self.omni_host)
+
+
         self.calc_unused_change_addresses()
 
         # save wallet type the first time
@@ -210,6 +234,60 @@ class Abstract_Wallet(AddressSynchronizer):
         self.contacts = Contacts(self.storage)
 
         self._coin_price_cache = {}
+
+    # omni
+    def omni_sethost(self, daemon_url):
+        self.omni_host = daemon_url
+        self.storage.put('omni_host', daemon_url)
+        self.omni_daemon.set_url(daemon_url)
+
+    def omni_getname(self, property_id):
+        try:
+            prop = self.omni_daemon.getProperty(property_id)
+            res = prop['result']
+            name = res['name']
+        except:
+            name = "token_%d" % property_id
+        return name
+
+    def omni_addr_balance(self, domain):
+        total = Decimal(0)
+        for addr in domain:
+            try:
+                val = self.omni_daemon.getBalance(addr, int(self.omni_property))
+                res = val['result']
+                total += Decimal(res['balance'])
+            except:
+                pass
+        return total
+
+    def omni_getbalance(self, domain=None):
+        if domain is None:
+            domain = self.get_addresses()
+
+        name = self.omni_getname(int(self.omni_property))
+        total = self.omni_addr_balance(domain)
+        return str(total) + " " + name
+
+    def omni_getamount(self, rawtx):
+
+        if rawtx is None:
+            self.parent.show_error(_('Error decoding OMNI amount. RawTx is empty'))
+            return ''
+
+        amount = Decimal(0)
+        try:
+            val = self.omni_daemon.decodeTransaction(rawtx)
+            if val['error']:
+                self.parent.show_error(_('Error decoding OMNI amount: ' + val['error']))
+
+            res = val['result']
+            amount = Decimal(res['amount'])
+            name = self.omni_getname(res['propertyid'])
+        except Exception as e:
+            name = self.omni_getname(int(self.omni_property))
+        return str(amount) + " " + name
+
 
     def load_and_cleanup(self):
         self.load_keystore()
@@ -1507,6 +1585,17 @@ class Deterministic_Wallet(Abstract_Wallet):
         Abstract_Wallet.__init__(self, storage)
         self.gap_limit = storage.get('gap_limit', 20)
 
+    def add_receiving_address(self, address):
+        if not bitcoin.is_address(address):
+            return
+        if address in self.receiving_addresses:
+            return
+        self.receiving_addresses.append(address)
+        self.add_address(address)
+        self.save_addresses()
+        self.storage.write()
+        return
+
     def has_seed(self):
         return self.keystore.has_seed()
 
@@ -1807,7 +1896,7 @@ class Multisig_Wallet(Deterministic_Wallet):
         txin['num_sig'] = self.m
 
 
-wallet_types = ['standard', 'multisig', 'imported']
+wallet_types = ['standard', 'multisig', 'imported', 'omni', 'master']
 
 def register_wallet_type(category):
     wallet_types.append(category)

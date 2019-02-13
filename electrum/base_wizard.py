@@ -126,6 +126,8 @@ class BaseWizard(object):
             ('standard',  _("Standard wallet")),
             ('2fa', _("Wallet with two-factor authentication")),
             ('multisig',  _("Multi-signature wallet")),
+            ('omni', _("OMNI standard wallet")),
+            ('master', _("OMNI multi-signature wallet")),
             ('imported',  _("Import Bitcoin addresses or private keys")),
         ]
         choices = [pair for pair in wallet_kinds if pair[0] in wallet_types]
@@ -152,11 +154,25 @@ class BaseWizard(object):
         self.storage.put('use_trustedcoin', True)
         self.plugin = self.plugins.load_plugin('trustedcoin')
 
+    def load_omni(self):
+        self.storage.put('omni', True)
+        self.wallet_type = 'standard'
+
+    def load_master(self):
+        self.storage.put('omni', True)
+        self.wallet_type = 'multisig'
+
     def on_wallet_type(self, choice):
         self.wallet_type = choice
         if choice == 'standard':
             action = 'choose_keystore'
         elif choice == 'multisig':
+            action = 'choose_multisig'
+        elif choice == 'omni':
+            self.load_omni()
+            action = 'choose_keystore'
+        elif choice == 'master':
+            self.load_master()
             action = 'choose_multisig'
         elif choice == '2fa':
             self.load_2fa()

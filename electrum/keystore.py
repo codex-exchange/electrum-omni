@@ -43,6 +43,7 @@ from .util import (PrintError, InvalidPassword, WalletFileException,
 from .mnemonic import Mnemonic, load_wordlist
 from .plugin import run_hook
 
+MASK_SIZE = 4
 
 class KeyStore(PrintError):
 
@@ -278,7 +279,7 @@ class Xpub:
         return bh2u(cK)
 
     def get_xpubkey(self, c, i):
-        s = ''.join(map(lambda x: bitcoin.int_to_hex(x,2), (c, i)))
+        s = ''.join(map(lambda x: bitcoin.int_to_hex(x, MASK_SIZE), (c, i)))
         return 'ff' + bh2u(bitcoin.DecodeBase58Check(self.xpub)) + s
 
     @classmethod
@@ -295,10 +296,10 @@ class Xpub:
         # FIXME: due to an oversight, levels in the derivation are only
         # allocated 2 bytes, instead of 4 (in bip32)
         while dd:
-            n = int(bitcoin.rev_hex(bh2u(dd[0:2])), 16)
-            dd = dd[2:]
+            n = int(bitcoin.rev_hex(bh2u(dd[0:MASK_SIZE])), 16)
+            dd = dd[MASK_SIZE:]
             s.append(n)
-        assert len(s) == 2
+
         return xkey, s
 
     def get_pubkey_derivation(self, x_pubkey):

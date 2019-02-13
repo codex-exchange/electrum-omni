@@ -221,7 +221,7 @@ class Network(PrintError):
         INSTANCE = self
 
         self.asyncio_loop = asyncio.get_event_loop()
-        assert self.asyncio_loop.is_running(), "event loop not running"
+        #assert self.asyncio_loop.is_running(), "event loop not running"
         self._loop_thread = None  # type: threading.Thread  # set by caller; only used for sanity checks
 
         if config is None:

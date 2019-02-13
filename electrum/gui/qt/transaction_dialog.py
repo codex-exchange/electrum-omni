@@ -54,9 +54,9 @@ SAVE_BUTTON_DISABLED_TOOLTIP = _("Please sign this transaction in order to save 
 dialogs = []  # Otherwise python randomly garbage collects the dialogs...
 
 
-def show_transaction(tx, parent, desc=None, prompt_if_unsaved=False):
+def show_transaction(tx, parent, desc=None, prompt_if_unsaved=False, currency_code="BTC"):
     try:
-        d = TxDialog(tx, parent, desc, prompt_if_unsaved)
+        d = TxDialog(tx, parent, desc, prompt_if_unsaved, currency_code)
     except SerializationError as e:
         traceback.print_exc(file=sys.stderr)
         parent.show_critical(_("Electrum was unable to deserialize the transaction:") + "\n" + str(e))
@@ -67,7 +67,7 @@ def show_transaction(tx, parent, desc=None, prompt_if_unsaved=False):
 
 class TxDialog(QDialog, MessageBoxMixin):
 
-    def __init__(self, tx, parent, desc, prompt_if_unsaved):
+    def __init__(self, tx, parent, desc, prompt_if_unsaved, currency_code):
         '''Transactions in the wallet will show their description.
         Pass desc to give a description for txs not yet in the wallet.
         '''
@@ -86,6 +86,7 @@ class TxDialog(QDialog, MessageBoxMixin):
         self.prompt_if_unsaved = prompt_if_unsaved
         self.saved = False
         self.desc = desc
+        self.currency_code = currency_code
 
         # if the wallet can populate the inputs with more info, do it now.
         # as a result, e.g. we might learn an imported address tx is segwit,
@@ -117,6 +118,10 @@ class TxDialog(QDialog, MessageBoxMixin):
         vbox.addWidget(self.size_label)
         self.fee_label = QLabel()
         vbox.addWidget(self.fee_label)
+
+        if hasattr(self.wallet, 'omni') and self.wallet.omni and currency_code != "BTC":
+            self.omni_amount_label = QLabel()
+            vbox.addWidget(self.omni_amount_label)
 
         self.add_io(vbox)
 
@@ -274,6 +279,13 @@ class TxDialog(QDialog, MessageBoxMixin):
         self.amount_label.setText(amount_str)
         self.fee_label.setText(fee_str)
         self.size_label.setText(size_str)
+
+        # omni
+        if hasattr(self.wallet, 'omni') and self.wallet.omni and self.currency_code != "BTC":
+            omni_tx_amount_str = self.wallet.omni_getamount(str(self.tx.raw))
+            omni_amount_str = _("OMNI amount: ") + '%s' % omni_tx_amount_str
+            self.omni_amount_label.setText(omni_amount_str)
+
         run_hook('transaction_dialog_update', self)
 
     def add_io(self, vbox):

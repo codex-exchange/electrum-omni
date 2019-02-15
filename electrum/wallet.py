@@ -192,6 +192,13 @@ class Abstract_Wallet(AddressSynchronizer):
     gap_limit_for_change = 6
     verbosity_filter = 'w'
 
+    def load_set_default(self, key, default):
+        value = self.storage.get(key, '')
+        if value == '':
+            value = default
+            self.storage.put(key, value)
+        return value
+
     def __init__(self, storage: WalletStorage):
         AddressSynchronizer.__init__(self, storage)
 
@@ -211,14 +218,12 @@ class Abstract_Wallet(AddressSynchronizer):
                 self.use_change = False
                 self.storage.put('use_change', False)
 
-            self.omni_decimal_point = storage.get('omni_decimal_point', 0)
-            self.omni_address = storage.get('omni_address', '')
-            if self.omni_address not in self.receiving_addresses:
-                self.add_receiving_address(self.omni_address)
-            self.omni_host = storage.get('omni_host', 'http://admin1:123@127.0.0.1:8361/')
-            self.omni_balance = storage.get('omni_balance', True)
-            self.omni_property = storage.get('omni_property', '31')
-            self.omni_code = storage.get('omni_code', 'USDT')
+            self.omni_decimal_point = self.load_set_default('omni_decimal_point', 0)
+            self.omni_address = self.load_set_default('omni_address', '')
+            self.omni_host = self.load_set_default('omni_host', 'http://admin1:123@127.0.0.1:8361/')
+            self.omni_balance = self.load_set_default('omni_balance', True)
+            self.omni_property = self.load_set_default('omni_property', '31')
+            self.omni_code = self.load_set_default('omni_code', 'USDT')
             self.omni_name = ''
             self.omni_total = Decimal(0.0)
             # status_update is called every 500ms

@@ -3382,7 +3382,7 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
             omni_host_label = HelpLabel(_('Daemon Url') + ':', _('Address and credentials of OMNI node\n' +
                                                                       'format: \n' +
                                                                       'http://{rpc_user}:{rpc_password}@{rpc_host}:{rpc_port}/'))
-            omni_host_e = QLineEdit(self.wallet.storage.get('omni_host', 'http://admin1:123@127.0.0.1:19401/'))
+            omni_host_e = QLineEdit(self.wallet.storage.get('omni_host', ''))
             omni_host_e.setFixedWidth(300)
 
             def on_omni_host_edit():
@@ -3394,7 +3394,7 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
             omni_property_label = HelpLabel(_('Property ID') + ':',
                                             _('List of registered OMNI Property IDs:' + '\n' +
                                               'https://omniexplorer.info/search/1'))
-            omni_property_e = QLineEdit(self.wallet.storage.get('omni_property', '1'))
+            omni_property_e = QLineEdit(self.wallet.storage.get('omni_property', ''))
 
             def on_property_edit():
                 #self.config.set_key('omni_property', str(omni_property_e.text()), True)
@@ -3407,7 +3407,7 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
 
             omni_code_label = HelpLabel(_('Currency code') + ':',
                                             _('Currency code for Cryptagio requests'))
-            omni_code_e = QLineEdit(self.wallet.storage.get('omni_code', 'OMNI'))
+            omni_code_e = QLineEdit(self.wallet.storage.get('omni_code', ''))
 
             def on_code_edit():
                 #self.config.set_key('omni_property', str(omni_property_e.text()), True)

@@ -10,6 +10,7 @@ class RPCHostOmni():
         # self._url = daemon_url
         self._headers = {'content-type': 'application/json'}
         self.id = random.randrange(2**31 - 1)
+        self.connected = False  # flag the response was received
 
     def set_url(self, daemon_url):
         self._url = daemon_url
@@ -23,8 +24,11 @@ class RPCHostOmni():
             try:
                 response = self._session.post(self._url, headers=self._headers, data=payload, verify=False)
             except requests.exceptions.ConnectionError:
+                if not self.connected:
+                    break
                 tries -= 1
                 if tries == 0:
+                    self.connected = False
                     raise Exception('Failed to connect for remote procedure call.')
                 hadFailedConnections = True
                 print(
@@ -37,6 +41,8 @@ class RPCHostOmni():
                 break
         if not response.status_code in (200, 500):
             raise Exception('RPC connection failure: ' + str(response.status_code) + ' ' + response.reason)
+        # confirm the response was received
+        self.connected = True
         responseJSON = response.json()
         if 'error' in responseJSON and responseJSON['error'] != None:
             raise Exception('Error in ' + rpcMethod + ' RPC call: ' + str(responseJSON['error']))

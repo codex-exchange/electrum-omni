@@ -220,7 +220,7 @@ class Abstract_Wallet(AddressSynchronizer):
             self.omni_property = storage.get('omni_property', '1')
             self.omni_code = storage.get('omni_code', 'OMNI')
             self.omni_name = ''
-            self.omni_balance = 0.0
+            self.omni_total = Decimal(0.0)
             # status_update is called every 500ms
             # to avoid 'dead interface' use every 10-th request to check OMNI balance
             self.omni_skip_counter = 0
@@ -275,9 +275,11 @@ class Abstract_Wallet(AddressSynchronizer):
         if self.omni_name == '':
             self.omni_name = self.omni_getname(int(self.omni_property))
         if self.omni_skip_counter == 0:
-            self.omni_balance = self.omni_addr_balance(domain)
+            self.omni_total = self.omni_addr_balance(domain)
         self.omni_skip_counter = (self.omni_skip_counter + 1) % self.omni_skip_max
-        return str(self.omni_balance) + " " + self.omni_name
+        fstr = '{0:.' + str(self.omni_decimal_point) + 'f} {1:s}'
+        total = fstr.format(self.omni_total, self.omni_name)
+        return total
 
     def omni_getamount(self, rawtx):
 

@@ -1188,6 +1188,7 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
             grid.addWidget(self.cur_combo, widget_index, 1)
             self.on_currency_change()
             self.cur_combo.currentIndexChanged.connect(self.on_currency_change)
+            self.payto_e.textChanged.connect(self.update_currency)
 
             self.currency_label = QLineEdit('')
             self.currency_label.setReadOnly(1)
@@ -1211,7 +1212,7 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
             self.fiat_send_e.setVisible(False)
         grid.addWidget(self.fiat_send_e, widget_index, 2)
 
-        if not hasattr(self.wallet, 'omni') and self.wallet.omni:
+        if not (hasattr(self.wallet, 'omni') and self.wallet.omni):
             self.amount_e.frozen.connect(
                 lambda: self.fiat_send_e.setFrozen(self.amount_e.isReadOnly()))
 
@@ -1419,6 +1420,10 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
 
     def update_fee(self):
         self.require_fee_update = True
+
+    def update_currency(self):
+        if hasattr(self.wallet, 'omni') and self.wallet.omni:
+            self.on_currency_change()
 
     def get_payto_or_dummy(self):
         r = self.payto_e.get_recipient()

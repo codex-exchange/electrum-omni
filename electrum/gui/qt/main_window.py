@@ -1589,7 +1589,7 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
     def is_send_feerate_frozen(self):
         ### Fix for omni to provide feerate
         v = self.feerate_e.isVisible()
-        # m = self.feerate_e.isModified()
+        m = self.feerate_e.isModified()
         t = self.feerate_e.text()
         f = self.feerate_e.hasFocus()
         return v and (t or f)
@@ -1672,9 +1672,12 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
         self.amount_e.setFrozen(not btcSelected)
         self.amount_ex.setFrozen(btcSelected)
         if btcSelected:
+            self.amount_e.setAmount(0)
             self.amount_ex.setAmount(None)
         else:
-            self.amount_e.setAmount(None)
+            self.amount_e.setAmount(self.wallet.dust_threshold())
+            self.amount_ex.setAmount(0)
+        self.update_fee()
 
     def get_omni_tx(self, addr, amount, max_fee, inputs=None):
         if addr is None:

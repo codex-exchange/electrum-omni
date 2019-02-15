@@ -219,6 +219,13 @@ class Abstract_Wallet(AddressSynchronizer):
             self.omni_balance = storage.get('omni_balance', False)
             self.omni_property = storage.get('omni_property', '1')
             self.omni_code = storage.get('omni_code', 'OMNI')
+            self.omni_name = ''
+            self.omni_balance = 0.0
+            # status_update is called every 500ms
+            # to avoid 'dead interface' use every 10-th request to check OMNI balance
+            self.omni_skip_counter = 0
+            self.omni_skip_max = 10
+
             self.omni_daemon = RPCHostOmni()
             self.omni_daemon.set_url(self.omni_host)
 
@@ -265,9 +272,12 @@ class Abstract_Wallet(AddressSynchronizer):
         if domain is None:
             domain = self.get_addresses()
 
-        name = self.omni_getname(int(self.omni_property))
-        total = self.omni_addr_balance(domain)
-        return str(total) + " " + name
+        if self.omni_name == '':
+            self.omni_name = self.omni_getname(int(self.omni_property))
+        if self.omni_skip_counter == 0:
+            self.omni_balance = self.omni_addr_balance(domain)
+        self.omni_skip_counter = (self.omni_skip_counter + 1) % self.omni_skip_max
+        return str(self.omni_balance) + " " + self.omni_name
 
     def omni_getamount(self, rawtx):
 
@@ -285,7 +295,7 @@ class Abstract_Wallet(AddressSynchronizer):
             amount = Decimal(res['amount'])
             name = self.omni_getname(res['propertyid'])
         except Exception as e:
-            name = self.omni_getname(int(self.omni_property))
+            name = self.omni_getname(int(self.omni_property)) if self.omni_name == '' else self.omni_name
         return str(amount) + " " + name
 
 

@@ -814,8 +814,9 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
 
                 ### OMNI
                 if hasattr(self.wallet, 'omni') and self.wallet.omni and self.wallet.omni_balance:
-                    omni_amount = self.wallet.omni_getbalance()
-                    text += u" [%s]" % (omni_amount)
+                    if self.wallet.is_up_to_date():
+                        omni_amount = self.wallet.omni_getbalance()
+                        text += u" [%s]" % (omni_amount)
 
                 # append fiat balance and price
                 if self.fx.is_enabled():
@@ -1185,6 +1186,9 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
             self.cur_combo.setCurrentIndex(0)
             self.cur_combo.setFixedWidth(self.amount_e.width())
             grid.addWidget(self.cur_combo, widget_index, 1)
+            self.on_currency_change()
+            self.cur_combo.currentIndexChanged.connect(self.on_currency_change)
+
             self.currency_label = QLineEdit('')
             self.currency_label.setReadOnly(1)
             self.currency_label.setFocusPolicy(Qt.NoFocus)
@@ -1220,8 +1224,8 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
 
         if hasattr(self.wallet, 'omni') and self.wallet.omni:
             # self.amount_e.setVisible(False)
-            grid.addWidget(self.amount_ex, widget_index, 4)
-            items += 1
+            grid.addWidget(self.amount_ex, widget_index, 2)
+            # items += 1
 
         hbox = QHBoxLayout()
         hbox.addStretch(1)
@@ -1441,12 +1445,11 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
                 _type, addr = self.get_payto_or_dummy()
                 outputs = [TxOutput(_type, addr, amount)]
             is_sweep = bool(self.tx_external_keypairs)
-            make_tx = lambda fee_est: \
-                self.wallet.make_unsigned_transaction(
-                    self.get_coins(), outputs, self.config,
-                    fixed_fee=fee_est, is_sweep=is_sweep)
+            btcFlag = True
+            if hasattr(self.wallet, 'omni') and self.wallet.omni:
+                btcFlag = self.cur_combo.currentIndex() == 0
             try:
-                tx = make_tx(fee_estimator)
+                tx = self.make_tx(outputs, fee_estimator, is_sweep, btcFlag)
                 self.not_enough_funds = False
             except (NotEnoughFunds, NoDynamicFeeEstimates) as e:
                 if not freeze_fee:
@@ -1459,7 +1462,7 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
                     self.not_enough_funds = True
                 elif isinstance(e, NoDynamicFeeEstimates):
                     try:
-                        tx = make_tx(0)
+                        tx = self.make_tx(outputs, fee_estimator, is_sweep, btcFlag)
                         size = tx.estimated_size()
                         self.size_e.setAmount(size)
                     except BaseException:
@@ -1601,12 +1604,6 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
             return
         label = self.message_e.text()
 
-        currency = "BTC"
-        if hasattr(self.wallet, 'omni') and self.wallet.omni:
-            index = self.cur_combo.currentIndex()
-            if index != 0:
-                currency = self.wallet.omni_code
-
         if self.payment_request:
             outputs = self.payment_request.get_outputs()
         else:
@@ -1628,6 +1625,21 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
             self.show_error(_('No outputs'))
             return
 
+        ### OMNI
+        currency = "BTC"
+        if hasattr(self.wallet, 'omni') and self.wallet.omni:
+            index = self.cur_combo.currentIndex()
+            if index != 0:
+                currency = self.wallet.omni_code
+                if len(outputs) != 1:
+                    self.show_error(_('Invalid destination for ') + currency)
+                    return
+                # substitute outputs with OMNI amount
+                omni_type = outputs[0].type
+                omni_address = outputs[0].address
+                omni_amount = int(self.amount_ex.get_amount())
+                outputs = [TxOutput(omni_type, omni_address, omni_amount)]
+
         for o in outputs:
             if o.address is None:
                 self.show_error(_('Bitcoin Address is None'))
@@ -1646,11 +1658,15 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
     def do_preview(self):
         self.do_send(preview = True)
 
-    # self.selector.currentIndexChanged.connect(self.on_selector)
+    # self.selector.currentIndexChanged.connect(self.on_currency_change)
     def on_currency_change(self):
         btcSelected = self.cur_combo.currentIndex() == 0
         self.amount_e.setFrozen(not btcSelected)
         self.amount_ex.setFrozen(btcSelected)
+        if btcSelected:
+            self.amount_ex.setAmount(None)
+        else:
+            self.amount_e.setAmount(None)
 
     def get_omni_tx(self, addr, amount, max_fee, inputs=None):
         if addr is None:
@@ -1703,14 +1719,18 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
 
         return hex_tx  #[coins, outputs]
 
-    def build_omni_tx(self, addr, amount, max_fee, estimator):
+    def build_omni_tx(self, addr, amount, estimator):
+
+        # hardcoded BTC fee max
+        MAX_FEE_BTC = 0.0001
+        max_fee = Decimal(MAX_FEE_BTC)
 
         omni_balance = self.wallet.omni_addr_balance([self.wallet.omni_address])
         if omni_balance == 0:
-            self.show_message(_('Income OMNI not found'))
+            self.show_error(_('Zero balance for ') + self.wallet.omni_code)
             return
         if omni_balance < amount:
-            self.show_message(_('Unsufficient OMNI funds'))
+            self.show_error(_('Unsufficient funds') + self.wallet.omni_code)
             return
 
         # fee_estimator = self.get_send_fee_estimator()
@@ -1721,7 +1741,7 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
 
         utxos = self.wallet.get_addr_utxo(self.wallet.omni_address)
         if len(utxos) == 0:
-            self.show_error(_('Absent unspent BTC for OMNI address ' + self.wallet.omni_address))
+            self.show_error(_('Absent unspent BTC for address ' + self.wallet.omni_address))
             return
 
         coins = []
@@ -1757,8 +1777,6 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
 
             fee = tx.get_fee()
 
-        # amount = tx.output_value() if self.is_max else sum(map(lambda x: x[2], outputs))
-
         use_rbf = self.config.get('use_rbf', True)
         if use_rbf:
             tx.set_rbf(True)
@@ -1770,15 +1788,26 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
 
         return tx
 
-
+    def make_tx(self, outputs, fee_est, is_sweep, btc=True):
+        if btc:
+            tx = self.wallet.make_unsigned_transaction(
+                self.get_coins(), outputs, self.config, fixed_fee=fee_est,
+                is_sweep=is_sweep)
+        else:
+            if len(outputs) != 1:
+                self.show_message(_('unexpected outputs'))
+                return
+            addr = outputs[0][1]
+            if self.wallet.omni_decimal_point == 0:
+                amount = int(outputs[0][2])
+            else:
+                p = pow(10, self.wallet.omni_decimal_point)
+                amount = int(outputs[0][2] / p)
+            tx = self.build_omni_tx(addr, amount, fee_est)
 
     def do_send(self, preview = False):
         if run_hook('abort_send', self):
             return
-
-        # hardcoded BTC fee max
-        MAX_FEE_BTC = 0.0001
-        max_fee = Decimal(MAX_FEE_BTC)
 
         r = self.read_send_tab()
         if not r:
@@ -1786,18 +1815,8 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
         outputs, fee_estimator, tx_desc, coins, currency = r
         try:
             is_sweep = bool(self.tx_external_keypairs)
-            if currency == "BTC":
-                tx = self.wallet.make_unsigned_transaction(
-                    coins, outputs, self.config, fixed_fee=fee_estimator,
-                    is_sweep=is_sweep)
-            else:
-                if len(outputs) != 1:
-                    self.show_message(_('unexpected outputs'))
-                    return
-                addr = outputs[0][1]
-                p = pow(10, self.decimal_point)
-                amount = int(outputs[0][2] / p)
-                tx = self.build_omni_tx(addr, amount, max_fee, fee_estimator)
+            btcFlag = currency == "BTC"
+            tx = self.make_tx(outputs, fee_estimator, is_sweep, btcFlag)
         except (NotEnoughFunds, NoDynamicFeeEstimates) as e:
             self.show_message(str(e))
             return
@@ -3373,6 +3392,7 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
                 #self.config.set_key('omni_property', str(omni_property_e.text()), True)
                 self.wallet.storage.put('omni_property', str(omni_property_e.text()))
                 self.wallet.omni_property = str(omni_property_e.text())
+                self.wallet.omni_name = ''
 
             omni_property_e.editingFinished.connect(on_property_edit)
             omni_widgets.append((omni_property_label, omni_property_e))

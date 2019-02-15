@@ -61,6 +61,9 @@ class BaseCrashReporter:
         self.exc_args = (exctype, value, tb)
 
     def send_report(self, asyncio_loop, proxy, endpoint="/crash"):
+        ### OMNI
+        raise Exception(_("Reporting not supported. Please send the description to the maintainer"))
+
         if constants.net.GENESIS[-4:] not in ["4943", "e26f"] and ".electrum.org" in BaseCrashReporter.report_server:
             # Gah! Some kind of altcoin wants to send us crash reports.
             raise Exception(_("Missing report URL."))

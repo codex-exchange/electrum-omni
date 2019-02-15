@@ -394,7 +394,8 @@ class Ledger_KeyStore(Hardware_KeyStore):
             has_change = False
             any_output_on_change_branch = is_any_tx_output_on_change_branch(tx)
             for o in tx.outputs():
-                assert o.type == TYPE_ADDRESS
+                if o.type != TYPE_ADDRESS:
+                    continue
                 info = tx.output_info.get(o.address)
                 if (info is not None) and len(tx.outputs()) > 1 \
                         and not has_change:

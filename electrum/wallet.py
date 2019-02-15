@@ -218,7 +218,7 @@ class Abstract_Wallet(AddressSynchronizer):
                 self.use_change = False
                 self.storage.put('use_change', False)
 
-            self.omni_decimal_point = self.load_set_default('omni_decimal_point', 0)
+            self.omni_decimal_point = self.load_set_default('omni_decimal_point', 8)
             self.omni_address = self.load_set_default('omni_address', '')
             self.omni_host = self.load_set_default('omni_host', 'http://admin1:123@127.0.0.1:8361/')
             self.omni_balance = self.load_set_default('omni_balance', True)

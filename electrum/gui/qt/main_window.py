@@ -3417,6 +3417,20 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
             omni_code_e.editingFinished.connect(on_code_edit)
             omni_widgets.append((omni_code_label, omni_code_e))
 
+            omni_precision_label = HelpLabel(_('Precision') + ':',
+                                            _('OMNI Layer supported precision 8 for divisible tokens' + '\n' +
+                                              'and precision 0 for undivisible' + '\n' +
+                                              'Token characteristics could be found at:' + '\n' +
+                                              'https://omniexplorer.info/search/1'))
+            omni_precision_e = QLineEdit(str(self.wallet.storage.get('omni_decimal_point', '')))
+
+            def on_precision_edit():
+                self.wallet.storage.put('omni_decimal_point', str(omni_precision_e.text()))
+                self.wallet.omni_decimal_point = str(omni_precision_e.text())
+
+            omni_precision_e.editingFinished.connect(on_precision_edit)
+            omni_widgets.append((omni_precision_label, omni_precision_e))
+
             def on_showbalance(x):
                 showbalance_result = x == Qt.Checked
                 if self.wallet.omni_balance != showbalance_result:

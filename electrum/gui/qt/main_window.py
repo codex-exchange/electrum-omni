@@ -1812,6 +1812,7 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
                 p = pow(10, self.wallet.omni_decimal_point)
                 amount = Decimal(outputs[0][2]) / p
             tx = self.build_omni_tx(addr, amount, fee_est)
+        return tx
 
     def do_send(self, preview = False):
         if run_hook('abort_send', self):
@@ -1821,6 +1822,7 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
         if not r:
             return
         outputs, fee_estimator, tx_desc, coins, currency = r
+        tx = None
         try:
             is_sweep = bool(self.tx_external_keypairs)
             btcFlag = currency == "BTC"

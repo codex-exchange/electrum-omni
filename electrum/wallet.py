@@ -215,10 +215,10 @@ class Abstract_Wallet(AddressSynchronizer):
             self.omni_address = storage.get('omni_address', '')
             if self.omni_address not in self.receiving_addresses:
                 self.add_receiving_address(self.omni_address)
-            self.omni_host = storage.get('omni_host', 'http://admin1:123@127.0.0.1:19401/')
-            self.omni_balance = storage.get('omni_balance', False)
-            self.omni_property = storage.get('omni_property', '1')
-            self.omni_code = storage.get('omni_code', 'OMNI')
+            self.omni_host = storage.get('omni_host', 'http://admin1:123@127.0.0.1:8361/')
+            self.omni_balance = storage.get('omni_balance', True)
+            self.omni_property = storage.get('omni_property', '31')
+            self.omni_code = storage.get('omni_code', 'USDT')
             self.omni_name = ''
             self.omni_total = Decimal(0.0)
             # status_update is called every 500ms

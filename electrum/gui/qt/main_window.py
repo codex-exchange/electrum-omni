@@ -815,6 +815,9 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
                 ### OMNI
                 if hasattr(self.wallet, 'omni') and self.wallet.omni and self.wallet.omni_balance:
                     if self.wallet.is_up_to_date():
+                        if self.wallet.omni_address == '':
+                            self.wallet.omni_address = self.wallet.receiving_addresses[0]
+                            self.wallet.storage.put('omni_address', self.wallet.omni_address)
                         omni_amount = self.wallet.omni_getbalance()
                         text += u" [%s]" % (omni_amount)
 

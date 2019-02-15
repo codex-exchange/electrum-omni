@@ -130,11 +130,14 @@ class FeerateEdit(BTCAmountEdit):
 
 class OMNIAmountEdit(AmountEdit):
 
-    def __init__(self, decimal_point, code="OMNI"):
+    def __init__(self, precision, code="OMNI"):
         self.code = code
-        int_flag = decimal_point == 0
+        int_flag = precision == 0
         AmountEdit.__init__(self, self._base_unit, int_flag)
-        self.decimal_point = decimal_point
+        self.precision = precision
+
+    def decimal_point(self):
+        return self.precision
 
     def _base_unit(self):
         return self.code
@@ -145,7 +148,7 @@ class OMNIAmountEdit(AmountEdit):
         except:
             return None
         # scale it to max allowed precision, make it an int
-        power = pow(10, self.decimal_point)
+        power = pow(10, self.precision)
         max_prec_amount = int(power * x)
         return max_prec_amount
 
@@ -153,5 +156,5 @@ class OMNIAmountEdit(AmountEdit):
         if amount is None:
             self.setText(" ") # Space forces repaint in case units changed
         else:
-            self.setText(format_satoshis_plain(amount, self.decimal_point))
+            self.setText(format_satoshis_plain(amount, self.precision))
 

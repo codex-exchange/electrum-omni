@@ -1807,10 +1807,10 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
                 return
             addr = outputs[0][1]
             if self.wallet.omni_decimal_point == 0:
-                amount = int(outputs[0][2])
+                amount = Decimal(outputs[0][2])
             else:
                 p = pow(10, self.wallet.omni_decimal_point)
-                amount = int(outputs[0][2] / p)
+                amount = Decimal(outputs[0][2]) / p
             tx = self.build_omni_tx(addr, amount, fee_est)
 
     def do_send(self, preview = False):
@@ -3425,8 +3425,8 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
             omni_precision_e = QLineEdit(str(self.wallet.storage.get('omni_decimal_point', '')))
 
             def on_precision_edit():
-                self.wallet.storage.put('omni_decimal_point', str(omni_precision_e.text()))
-                self.wallet.omni_decimal_point = str(omni_precision_e.text())
+                self.wallet.storage.put('omni_decimal_point', int(omni_precision_e.text()))
+                self.wallet.omni_decimal_point = int(omni_precision_e.text())
 
             omni_precision_e.editingFinished.connect(on_precision_edit)
             omni_widgets.append((omni_precision_label, omni_precision_e))

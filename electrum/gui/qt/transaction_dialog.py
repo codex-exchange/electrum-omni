@@ -54,9 +54,9 @@ SAVE_BUTTON_DISABLED_TOOLTIP = _("Please sign this transaction in order to save 
 dialogs = []  # Otherwise python randomly garbage collects the dialogs...
 
 
-def show_transaction(tx, parent, desc=None, prompt_if_unsaved=False, currency_code="BTC"):
+def show_transaction(tx, parent, desc=None, prompt_if_unsaved=False, currency_code="BTC", omni_amount=0):
     try:
-        d = TxDialog(tx, parent, desc, prompt_if_unsaved, currency_code)
+        d = TxDialog(tx, parent, desc, prompt_if_unsaved, currency_code, omni_amount)
     except SerializationError as e:
         traceback.print_exc(file=sys.stderr)
         parent.show_critical(_("Electrum was unable to deserialize the transaction:") + "\n" + str(e))
@@ -67,7 +67,7 @@ def show_transaction(tx, parent, desc=None, prompt_if_unsaved=False, currency_co
 
 class TxDialog(QDialog, MessageBoxMixin):
 
-    def __init__(self, tx, parent, desc, prompt_if_unsaved, currency_code):
+    def __init__(self, tx, parent, desc, prompt_if_unsaved, currency_code, omni_amount):
         '''Transactions in the wallet will show their description.
         Pass desc to give a description for txs not yet in the wallet.
         '''
@@ -87,6 +87,7 @@ class TxDialog(QDialog, MessageBoxMixin):
         self.saved = False
         self.desc = desc
         self.currency_code = currency_code
+        self.omni_amount = omni_amount
 
         # if the wallet can populate the inputs with more info, do it now.
         # as a result, e.g. we might learn an imported address tx is segwit,
@@ -282,7 +283,10 @@ class TxDialog(QDialog, MessageBoxMixin):
 
         # omni
         if hasattr(self.wallet, 'omni') and self.wallet.omni and self.currency_code != "BTC":
-            omni_tx_amount_str = self.wallet.omni_getamount(str(self.tx.raw))
+            if self.omni_amount > 0: # if omni_amount passed from the send form
+                omni_tx_amount_str = "%s %s" % (str(self.omni_amount), self.currency_code)
+            else:
+                omni_tx_amount_str = self.wallet.omni_getamount(str(self.tx.raw))
             omni_amount_str = _("OMNI amount: ") + '%s' % omni_tx_amount_str
             self.omni_amount_label.setText(omni_amount_str)
 

@@ -873,11 +873,11 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
         d = address_dialog.AddressDialog(self, addr)
         d.exec_()
 
-    def show_transaction(self, tx, tx_desc = None, currency_code = None):
+    def show_transaction(self, tx, tx_desc = None, currency_code = None, omni_amount=0):
         '''tx_desc is set only for txs created in the Send tab'''
         if currency_code is None:
             currency_code = self.wallet.omni_code if hasattr(self.wallet, 'omni') and self.wallet.omni else 'BTC'
-        show_transaction(tx, self, tx_desc, currency_code=currency_code)
+        show_transaction(tx, self, tx_desc, currency_code=currency_code, omni_amount=omni_amount)
 
     def create_receive_tab(self):
         # A 4-column grid layout.  All the stretch is in the last column.
@@ -1479,7 +1479,8 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
             except BaseException:
                 traceback.print_exc(file=sys.stderr)
                 return
-
+            if tx is None:
+                return
             size = tx.estimated_size()
             self.size_e.setAmount(size)
 
@@ -1634,6 +1635,7 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
             return
 
         ### OMNI
+        omni_amount = 0
         currency = "BTC"
         if hasattr(self.wallet, 'omni') and self.wallet.omni:
             index = self.cur_combo.currentIndex()
@@ -1661,7 +1663,9 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
 
         fee_estimator = self.get_send_fee_estimator()
         coins = self.get_coins()
-        return outputs, fee_estimator, label, coins, currency
+        if omni_amount > 0:
+            omni_amount = self.amount_from_bits(omni_amount)
+        return outputs, fee_estimator, label, coins, currency, omni_amount
 
     def do_preview(self):
         self.do_send(preview = True)
@@ -1741,7 +1745,7 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
             self.show_error(_('Zero balance for ') + self.wallet.omni_code)
             return
         if omni_balance < amount:
-            self.show_error(_('Unsufficient funds') + self.wallet.omni_code)
+            self.show_error(_('Unsufficient funds ') + self.wallet.omni_code)
             return
 
         # fee_estimator = self.get_send_fee_estimator()
@@ -1799,6 +1803,14 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
 
         return tx
 
+    def amount_from_bits(self, value):
+        if self.wallet.omni_decimal_point == 0:
+            amount = Decimal(value)
+        else:
+            p = pow(10, self.wallet.omni_decimal_point)
+            amount = Decimal(value) / p
+        return amount
+
     def make_tx(self, outputs, fee_est, is_sweep, btc=True):
         if btc:
             tx = self.wallet.make_unsigned_transaction(
@@ -1809,11 +1821,8 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
                 self.show_message(_('unexpected outputs'))
                 return
             addr = outputs[0][1]
-            if self.wallet.omni_decimal_point == 0:
-                amount = Decimal(outputs[0][2])
-            else:
-                p = pow(10, self.wallet.omni_decimal_point)
-                amount = Decimal(outputs[0][2]) / p
+            amount = self.amount_from_bits(outputs[0][2])
+
             tx = self.build_omni_tx(addr, amount, fee_est)
         return tx
 
@@ -1824,7 +1833,7 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
         r = self.read_send_tab()
         if not r:
             return
-        outputs, fee_estimator, tx_desc, coins, currency = r
+        outputs, fee_estimator, tx_desc, coins, currency, omni_amount = r
         tx = None
         try:
             is_sweep = bool(self.tx_external_keypairs)
@@ -1861,7 +1870,7 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
             return
 
         if preview:
-            self.show_transaction(tx, tx_desc)
+            self.show_transaction(tx, tx_desc, currency, omni_amount)
             return
 
         if not self.network:
@@ -3440,6 +3449,8 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
                 showbalance_result = x == Qt.Checked
                 if self.wallet.omni_balance != showbalance_result:
                     self.wallet.omni_balance = showbalance_result
+                    if showbalance_result:
+                        self.wallet.omni_skip_counter = 0
                     self.wallet.storage.put('omni_balance', self.wallet.omni_balance)
 
             omni_balance_cb = QCheckBox(_('Show balance'))

@@ -48,8 +48,9 @@ class AddressList(MyTreeView):
         COIN_BALANCE = 3
         FIAT_BALANCE = 4
         NUM_TXS = 5
+        OMNI_BALANCE = 6
 
-    filter_columns = [Columns.TYPE, Columns.ADDRESS, Columns.LABEL, Columns.COIN_BALANCE]
+    filter_columns = [Columns.TYPE, Columns.ADDRESS, Columns.LABEL, Columns.COIN_BALANCE, Columns.OMNI_BALANCE]
 
     def __init__(self, parent=None):
         super().__init__(parent, self.create_menu, stretch_column=self.Columns.LABEL)
@@ -89,10 +90,12 @@ class AddressList(MyTreeView):
             self.Columns.TYPE: _('Type'),
             self.Columns.ADDRESS: _('Address'),
             self.Columns.LABEL: _('Label'),
-            self.Columns.COIN_BALANCE: _('Balance'),
+            self.Columns.COIN_BALANCE: _('Balance BTC'),
             self.Columns.FIAT_BALANCE: ccy + ' ' + _('Balance'),
             self.Columns.NUM_TXS: _('Tx'),
         }
+        if hasattr(self.wallet, "omni") and self.wallet.omni_balance:
+            headers[self.Columns.OMNI_BALANCE] = _('Balance ') + self.wallet.omni_code
         self.update_headers(headers)
 
     def toggle_change(self, state):
@@ -118,6 +121,8 @@ class AddressList(MyTreeView):
             addr_list = self.wallet.get_addresses()
         self.model().clear()
         self.refresh_headers()
+        omni_balances = hasattr(self.wallet, 'omni') and self.wallet.omni_balance
+
         fx = self.parent.fx
         set_address = None
         for address in addr_list:
@@ -139,7 +144,11 @@ class AddressList(MyTreeView):
                 fiat_balance = fx.value_str(balance, rate)
             else:
                 fiat_balance = ''
-            labels = ['', address, label, balance_text, fiat_balance, "%d"%num]
+            if omni_balances:
+                omni_balance = self.wallet.omni_str_balance(address)
+            else:
+                omni_balance = ''
+            labels = ['', address, label, balance_text, fiat_balance, "%d" % num, omni_balance]
             address_item = [QStandardItem(e) for e in labels]
             # align text and set fonts
             for i, item in enumerate(address_item):
@@ -173,6 +182,10 @@ class AddressList(MyTreeView):
             self.showColumn(self.Columns.FIAT_BALANCE)
         else:
             self.hideColumn(self.Columns.FIAT_BALANCE)
+        if omni_balances:
+            self.showColumn(self.Columns.OMNI_BALANCE)
+        else:
+            self.hideColumn(self.Columns.OMNI_BALANCE)
 
     def create_menu(self, position):
         from electrum.wallet import Multisig_Wallet

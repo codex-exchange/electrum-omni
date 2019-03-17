@@ -2074,7 +2074,6 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
             self.amount_e.setAmount(amount)
             self.amount_e.textEdited.emit("")
 
-
     def do_clear(self):
         self.is_max = False
         self.not_enough_funds = False

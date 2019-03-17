@@ -36,14 +36,18 @@ from .verifier import SPV
 from .blockchain import hash_header
 from .i18n import _
 
+from decimal import Decimal
+from .rpc import RPCHostOmni
+
+
 if TYPE_CHECKING:
     from .storage import WalletStorage
     from .network import Network
 
-
 TX_HEIGHT_LOCAL = -2
 TX_HEIGHT_UNCONF_PARENT = -1
 TX_HEIGHT_UNCONFIRMED = 0
+
 
 class AddTransactionException(Exception):
     pass
@@ -69,6 +73,20 @@ class AddressSynchronizer(PrintError):
         self.lock = threading.RLock()
         self.transaction_lock = threading.RLock()
         # address -> list(txid, height)
+
+        # omni
+        self.omni = storage.get('omni', False)
+        if self.omni:
+            # self.omni_balance = storage.get('omni_balance', False)
+
+            self.omni_host = storage.get('omni_host', '')
+            if self.omni_host != '':
+                self.omni_daemon = RPCHostOmni()
+                self.omni_daemon.set_url(self.omni_host)
+            else:
+                self.omni_daemon = None
+            self.omni_tx = dict()
+
         self.history = storage.get('addr_history',{})
         # Verified transactions.  txid -> TxMinedInfo.  Access with self.lock.
         verified_tx = storage.get('verified_tx3', {})
@@ -87,6 +105,7 @@ class AddressSynchronizer(PrintError):
         self.threadlocal_cache = threading.local()
 
         self.load_and_cleanup()
+
 
     def with_transaction_lock(func):
         def func_wrapper(self, *args, **kwargs):
@@ -204,6 +223,47 @@ class AddressSynchronizer(PrintError):
                 conflicting_txns -= {tx_hash}
             return conflicting_txns
 
+    def omni_getname(self, property_id):
+        if not hasattr(self, 'omni'):
+            return ''
+        if self.omni_host == '' or self.omni_daemon is None:
+            return ''
+        try:
+            prop = self.omni_daemon.getProperty(property_id)
+            res = prop['result']
+            name = res['name']
+        except:
+            name = "token_%d" % property_id
+        return name
+
+    def omni_txdata(self, txid, rawtx):
+
+        if not hasattr(self, 'omni'):
+            return {}
+        if self.omni_host == '' or self.omni_daemon is None:
+            return {}
+        if rawtx is None:
+            return {}
+
+        try:
+            val = self.omni_daemon.decodeTransaction(rawtx)
+            if val['error']:
+                return {}
+
+            res = val['result']
+            # if not res['is_mine']:
+            #     return {}
+            if res['txid'] != txid:
+                return {}
+            out = dict()
+            out['amount'] = res['amount']
+            out['sender'] = res['sendingaddress']
+            out['reference'] = res['referenceaddress']
+            out['name'] = self.omni_getname(res['propertyid'])
+            return out
+        except:
+            return {}
+
     def add_transaction(self, tx_hash, tx, allow_unrelated=False):
         assert tx_hash, tx_hash
         assert tx, tx
@@ -295,6 +355,11 @@ class AddressSynchronizer(PrintError):
                         if (ser, v) not in dd[addr]:
                             dd[addr].add((ser, v))
                         self._add_tx_to_local_history(next_tx)
+            if hasattr(self, 'omni'):
+                # add omni tx data
+                if self.omni_host != '':
+                    self.omni_tx[tx_hash] = self.omni_txdata(tx_hash, tx.raw)
+
             # add to local history
             self._add_tx_to_local_history(tx_hash)
             # save
@@ -380,6 +445,10 @@ class AddressSynchronizer(PrintError):
                 self.txi[txid][addr] = set([tuple(x) for x in lst])
         # bookkeeping data of is_mine outputs of transactions
         self.txo = self.storage.get('txo', {})  # txid -> address -> (output_index, value, is_coinbase)
+        if hasattr(self, 'omni'):
+            # add omni tx data
+            if self.omni_host != '':
+                self.omni_tx = self.storage.get('omni_tx', {})
         self.tx_fees = self.storage.get('tx_fees', {})
         tx_list = self.storage.get('transactions', {})
         # load transactions
@@ -443,6 +512,10 @@ class AddressSynchronizer(PrintError):
             self.storage.put('transactions', tx)
             self.storage.put('txi', self.txi)
             self.storage.put('txo', self.txo)
+            if hasattr(self, 'omni'):
+                # add omni tx data
+                if self.omni_host != '':
+                    self.storage.put('omni_tx', self.omni_tx)
             self.storage.put('tx_fees', self.tx_fees)
             self.storage.put('addr_history', self.history)
             self.storage.put('spent_outpoints', self.spent_outpoints)
@@ -495,6 +568,17 @@ class AddressSynchronizer(PrintError):
                 self.threadlocal_cache.local_height = orig_val
         return f
 
+    def omni_addr_balance(self, domain):
+        total = Decimal(0)
+        for addr in domain:
+            try:
+                val = self.omni_daemon.getBalance(addr, int(self.omni_property))
+                res = val['result']
+                total += Decimal(res['balance'])
+            except:
+                pass
+        return total
+
     @with_local_height_cached
     def get_history(self, domain=None):
         # get domain
@@ -504,6 +588,7 @@ class AddressSynchronizer(PrintError):
         # 1. Get the history of each address in the domain, maintain the
         #    delta of a tx as the sum of its deltas on domain addresses
         tx_deltas = defaultdict(int)
+        omni_deltas = dict()
         for addr in domain:
             h = self.get_address_history(addr)
             for tx_hash, height in h:
@@ -512,29 +597,50 @@ class AddressSynchronizer(PrintError):
                     tx_deltas[tx_hash] = None
                 else:
                     tx_deltas[tx_hash] += delta
+                omni_delta = self.get_omni_delta(tx_hash, addr)
+                if omni_delta != 0:
+                    # safety check and append tx_hash to tx_deltas
+                    if not tx_hash in tx_deltas:
+                        tx_deltas[tx_hash] = 0
+                    if tx_hash in omni_deltas:
+                        omni_deltas[tx_hash] += omni_delta
+                    else:
+                        omni_deltas[tx_hash] = omni_delta
         # 2. create sorted history
         history = []
         for tx_hash in tx_deltas:
             delta = tx_deltas[tx_hash]
+            if tx_hash in omni_deltas:
+                omni_delta = omni_deltas[tx_hash]
+            else:
+                omni_delta = 0
             tx_mined_status = self.get_tx_height(tx_hash)
-            history.append((tx_hash, tx_mined_status, delta))
+            history.append((tx_hash, tx_mined_status, delta, omni_delta))
         history.sort(key = lambda x: self.get_txpos(x[0]), reverse=True)
         # 3. add balance
         c, u, x = self.get_balance(domain)
         balance = c + u + x
+        if hasattr(self, 'omni') and self.omni:
+            omni_balance = self.omni_addr_balance(domain)
+        else:
+            omni_balance = 0
         h2 = []
-        for tx_hash, tx_mined_status, delta in history:
-            h2.append((tx_hash, tx_mined_status, delta, balance))
+        for tx_hash, tx_mined_status, delta, omni_delta in history:
+            h2.append((tx_hash, tx_mined_status, delta, balance, omni_delta, omni_balance))
             if balance is None or delta is None:
                 balance = None
             else:
                 balance -= delta
+            if (not omni_delta is None) and (omni_delta != 0):
+                omni_balance -= omni_delta
         h2.reverse()
         # fixme: this may happen if history is incomplete
         if balance not in [None, 0]:
             self.print_error("Error: history not synchronized")
             return []
-
+        # don't check omni_balance for 0 as
+        # omni_balance could be != 0 as in case of direct getting omni from the super-address
+        # thare is not any incoming omni tx
         return h2
 
     def _add_tx_to_local_history(self, txid):
@@ -673,6 +779,25 @@ class AddressSynchronizer(PrintError):
         for n, v, cb in d:
             delta += v
         return delta
+
+    @with_transaction_lock
+    def get_omni_delta(self, tx_hash, address):
+        """effect of tx on address"""
+        if not hasattr(self, 'omni'):
+            return 0
+        # substract the value of coins sent from address
+        if not tx_hash in self.omni_tx:
+            return 0
+        tx_data = self.omni_tx[tx_hash]
+        if (not 'amount' in tx_data) or (not 'sender' in tx_data) or (not 'reference' in tx_data):
+            return 0
+        value = Decimal(tx_data['amount'])
+        if tx_data['sender'] == address:
+            return -value
+        if tx_data['reference'] == address:
+            return value
+        return 0
+
 
     @with_transaction_lock
     def get_tx_value(self, txid):

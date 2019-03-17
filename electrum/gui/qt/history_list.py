@@ -81,6 +81,8 @@ class HistoryColumns(IntEnum):
     FIAT_ACQ_PRICE = 6
     FIAT_CAP_GAINS = 7
     TXID = 8
+    OMNI_VALUE = 9
+    OMNI_BALANCE = 10
 
 class HistorySortModel(QSortFilterProxyModel):
     def lessThan(self, source_left: QModelIndex, source_right: QModelIndex):
@@ -101,11 +103,12 @@ class HistoryModel(QAbstractItemModel, PrintError):
 
     def __init__(self, parent):
         super().__init__(parent)
-        self.parent = parent
+        self.parent = parent  # main_window
         self.view = None  # type: HistoryList
         self.transactions = OrderedDictWithIndex()
         self.tx_status_cache = {}  # type: Dict[str, Tuple[int, str]]
         self.summary = None
+        self.omni = hasattr(parent.wallet, 'omni') and parent.wallet.omni
 
     def set_view(self, history_list: 'HistoryList'):
         # FIXME HistoryModel and HistoryList mutually depend on each other.
@@ -156,6 +159,9 @@ class HistoryModel(QAbstractItemModel, PrintError):
                     tx_item['capital_gain'].value if 'capital_gain' in tx_item else None,
                 HistoryColumns.TXID: tx_hash,
             }
+            if self.omni:
+                d[HistoryColumns.OMNI_VALUE] = tx_item['omni_value']
+                d[HistoryColumns.OMNI_BALANCE] = tx_item['omni_balance']
             return QVariant(d[col])
         if role not in (Qt.DisplayRole, Qt.EditRole):
             if col == HistoryColumns.STATUS_ICON and role == Qt.DecorationRole:
@@ -190,6 +196,14 @@ class HistoryModel(QAbstractItemModel, PrintError):
         elif col == HistoryColumns.RUNNING_COIN_BALANCE:
             balance = tx_item['balance'].value
             balance_str = self.parent.format_amount(balance, whitespaces=True)
+            return QVariant(balance_str)
+        elif col == HistoryColumns.OMNI_VALUE:
+            value = tx_item['omni_value']  # .value
+            v_str = self.parent.wallet.omni_format_amount(value)
+            return QVariant(v_str)
+        elif col == HistoryColumns.OMNI_BALANCE:
+            balance = tx_item['omni_balance']  # .value
+            balance_str = self.parent.wallet.omni_format_amount(balance)
             return QVariant(balance_str)
         elif col == HistoryColumns.FIAT_VALUE and 'fiat_value' in tx_item:
             value_str = self.parent.fx.format_fiat(tx_item['fiat_value'].value)
@@ -279,6 +293,9 @@ class HistoryModel(QAbstractItemModel, PrintError):
         set_visible(HistoryColumns.FIAT_VALUE, history)
         set_visible(HistoryColumns.FIAT_ACQ_PRICE, history and cap_gains)
         set_visible(HistoryColumns.FIAT_CAP_GAINS, history and cap_gains)
+        # omni
+        set_visible(HistoryColumns.OMNI_VALUE, self.omni)
+        set_visible(HistoryColumns.OMNI_BALANCE, self.omni)
 
     def update_fiat(self, row, idx):
         tx_item = self.transactions.value_from_pos(row)
@@ -326,16 +343,24 @@ class HistoryModel(QAbstractItemModel, PrintError):
             fiat_title = '%s '%fx.ccy + _('Value')
             fiat_acq_title = '%s '%fx.ccy + _('Acquisition price')
             fiat_cg_title =  '%s '%fx.ccy + _('Capital Gains')
+        omni_value = 'n/a Amount OMNI'
+        omni_balance = 'n/a Balance OMNI'
+        if hasattr(self.parent.wallet, 'omni') and self.parent.wallet.omni:
+            code = self.parent.wallet.omni_code
+            omni_value = _("Amount ") + "%s" % code
+            omni_balance = _("Balance ") + "%s" % code
         return {
             HistoryColumns.STATUS_ICON: '',
             HistoryColumns.STATUS_TEXT: _('Date'),
             HistoryColumns.DESCRIPTION: _('Description'),
-            HistoryColumns.COIN_VALUE: _('Amount'),
-            HistoryColumns.RUNNING_COIN_BALANCE: _('Balance'),
+            HistoryColumns.COIN_VALUE: _('Amount BTC'),
+            HistoryColumns.RUNNING_COIN_BALANCE: _('Balance BTC'),
             HistoryColumns.FIAT_VALUE: fiat_title,
             HistoryColumns.FIAT_ACQ_PRICE: fiat_acq_title,
             HistoryColumns.FIAT_CAP_GAINS: fiat_cg_title,
             HistoryColumns.TXID: 'TXID',
+            HistoryColumns.OMNI_VALUE: omni_value,
+            HistoryColumns.OMNI_BALANCE: omni_balance,
         }[section]
 
     def flags(self, idx):

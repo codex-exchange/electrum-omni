@@ -181,7 +181,6 @@ class InternalAddressCorruption(Exception):
                  "Please restore your wallet from seed, and compare the addresses in both files")
 
 
-
 class Abstract_Wallet(AddressSynchronizer):
     """
     Wallet classes are created to handle various address generation methods.
@@ -211,7 +210,7 @@ class Abstract_Wallet(AddressSynchronizer):
         self.receive_requests      = storage.get('payment_requests', {})
 
         # omni
-        self.omni                  = storage.get('omni', False)
+        # self.omni                  = storage.get('omni', False)
 
         if self.omni:
             if self.use_change:
@@ -220,7 +219,7 @@ class Abstract_Wallet(AddressSynchronizer):
 
             self.omni_decimal_point = self.load_set_default('omni_decimal_point', 8)
             self.omni_address = self.load_set_default('omni_address', '')
-            self.omni_host = self.load_set_default('omni_host', 'http://admin1:123@127.0.0.1:8361/')
+            # self.omni_host = self.load_set_default('omni_host', 'http://admin1:123@127.0.0.1:8361/')
             self.omni_balance = self.load_set_default('omni_balance', True)
             self.omni_property = self.load_set_default('omni_property', '31')
             self.omni_code = self.load_set_default('omni_code', 'USDT')
@@ -231,8 +230,8 @@ class Abstract_Wallet(AddressSynchronizer):
             self.omni_skip_counter = 0
             self.omni_skip_max = 10
 
-            self.omni_daemon = RPCHostOmni()
-            self.omni_daemon.set_url(self.omni_host)
+            # self.omni_daemon = RPCHostOmni()
+            # self.omni_daemon.set_url(self.omni_host)
 
 
         self.calc_unused_change_addresses()
@@ -262,16 +261,17 @@ class Abstract_Wallet(AddressSynchronizer):
             name = "token_%d" % property_id
         return name
 
-    def omni_addr_balance(self, domain):
-        total = Decimal(0)
-        for addr in domain:
-            try:
-                val = self.omni_daemon.getBalance(addr, int(self.omni_property))
-                res = val['result']
-                total += Decimal(res['balance'])
-            except:
-                pass
-        return total
+    def omni_format_amount(self, amount):
+        if amount == 0:
+            if self.omni_decimal_point > 0:
+                return "0."
+            else:
+                return "0"
+        return str(amount)
+
+    def omni_str_balance(self, address):
+        balance = self.omni_addr_balance([address])
+        return self.omni_format_amount(balance)
 
     def omni_getbalance(self, domain=None):
         if domain is None:
@@ -303,8 +303,7 @@ class Abstract_Wallet(AddressSynchronizer):
             name = self.omni_getname(res['propertyid'])
         except Exception as e:
             name = self.omni_getname(int(self.omni_property)) if self.omni_name == '' else self.omni_name
-        return str(amount) + " " + name
-
+        return self.omni_format_amount(amount) + " " + name
 
     def load_and_cleanup(self):
         self.load_keystore()
@@ -509,7 +508,7 @@ class Abstract_Wallet(AddressSynchronizer):
     def balance_at_timestamp(self, domain, target_timestamp):
         h = self.get_history(domain)
         balance = 0
-        for tx_hash, tx_mined_status, value, balance in h:
+        for tx_hash, tx_mined_status, value, balance, _, _ in h:
             if tx_mined_status.timestamp > target_timestamp:
                 return balance - value
         # return last balance
@@ -530,7 +529,7 @@ class Abstract_Wallet(AddressSynchronizer):
         fiat_expenditures = Decimal(0)
         h = self.get_history(domain)
         now = time.time()
-        for tx_hash, tx_mined_status, value, balance in h:
+        for tx_hash, tx_mined_status, value, balance, omni_value, omni_balance in h:
             timestamp = tx_mined_status.timestamp
             if from_timestamp and (timestamp or now) < from_timestamp:
                 continue
@@ -554,6 +553,9 @@ class Abstract_Wallet(AddressSynchronizer):
                 'label': self.get_label(tx_hash),
                 'txpos_in_block': tx_mined_status.txpos,
             }
+            if hasattr(self, 'omni') and self.omni:
+                item['omni_value'] = omni_value
+                item['omni_balance'] = omni_balance
             tx_fee = None
             if show_fees:
                 tx_fee = self.get_tx_fee(tx)
@@ -706,7 +708,7 @@ class Abstract_Wallet(AddressSynchronizer):
 
     def get_unconfirmed_base_tx_for_batching(self) -> Optional[Transaction]:
         candidate = None
-        for tx_hash, tx_mined_status, delta, balance in self.get_history():
+        for tx_hash, tx_mined_status, delta, balance, _, _ in self.get_history():
             # tx should not be mined yet
             if tx_mined_status.conf > 0: continue
             # tx should be "outgoing" from wallet

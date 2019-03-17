@@ -115,7 +115,7 @@ class ElectrumGui:
 
         b = 0
         self.history = []
-        for tx_hash, tx_mined_status, value, balance in self.wallet.get_history():
+        for tx_hash, tx_mined_status, value, balance, _, _ in self.wallet.get_history():
             if tx_mined_status.conf:
                 timestamp = tx_mined_status.timestamp
                 try:

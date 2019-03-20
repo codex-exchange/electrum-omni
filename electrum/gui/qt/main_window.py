@@ -258,6 +258,8 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
             self._update_check_thread.checked.connect(on_version_received)
             self._update_check_thread.start()
 
+        # self.omni_source_e = None
+
     def on_history(self, b):
         self.wallet.clear_coin_price_cache()
         self.new_fx_history_signal.emit()
@@ -1146,14 +1148,41 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
         grid.setSpacing(8)
         grid.setColumnStretch(3, 1)
 
+        omni_flag = hasattr(self.wallet, 'omni') and self.wallet.omni
+
         from .paytoedit import PayToEdit
+
+        widget_index = 1
+        if omni_flag:
+            omni_source_label = HelpLabel(_('Send from') + ':',
+                                           _('OMNI Source Address for the Transaction'))
+            self.omni_source_e = MyLineEdit(self.wallet.omni_source)
+
+            def on_source_edit():
+                addr = str(self.omni_source_e.text())
+                if addr != '':
+                    if not bitcoin.is_address(addr):
+                        self.show_error(_("Invalid Source (Pay From) Address"))
+                        return
+                    if not (addr in self.wallet.get_addresses()):
+                        self.show_error(_("Unknown Source (Pay From) Address"))
+                        return
+                    self.wallet.omni_source = addr
+
+            self.omni_source_e.editingFinished.connect(on_source_edit)
+
+            grid.addWidget(omni_source_label, widget_index, 0)
+            grid.addWidget(self.omni_source_e, widget_index, 1, 1, -1)
+            widget_index += 1
+
         self.amount_e = BTCAmountEdit(self.get_decimal_point)
         self.payto_e = PayToEdit(self)
         msg = _('Recipient of the funds.') + '\n\n'\
               + _('You may enter a Bitcoin address, a label from your list of contacts (a list of completions will be proposed), or an alias (email-like address that forwards to a Bitcoin address)')
         payto_label = HelpLabel(_('Pay to'), msg)
-        grid.addWidget(payto_label, 1, 0)
-        grid.addWidget(self.payto_e, 1, 1, 1, -1)
+        grid.addWidget(payto_label, widget_index, 0)
+        grid.addWidget(self.payto_e, widget_index, 1, 1, -1)
+        widget_index += 1
 
         completer = QCompleter()
         completer.setCaseSensitivity(False)
@@ -1163,18 +1192,19 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
         msg = _('Description of the transaction (not mandatory).') + '\n\n'\
               + _('The description is not sent to the recipient of the funds. It is stored in your wallet file, and displayed in the \'History\' tab.')
         description_label = HelpLabel(_('Description'), msg)
-        grid.addWidget(description_label, 2, 0)
+        grid.addWidget(description_label, widget_index, 0)
         self.message_e = MyLineEdit()
-        grid.addWidget(self.message_e, 2, 1, 1, -1)
+        grid.addWidget(self.message_e, widget_index, 1, 1, -1)
+        widget_index += 1
 
         self.from_label = QLabel(_('From'))
-        grid.addWidget(self.from_label, 3, 0)
+        grid.addWidget(self.from_label, widget_index, 0)
         self.from_list = FromList(self, self.from_list_menu)
-        grid.addWidget(self.from_list, 3, 1, 1, -1)
+        grid.addWidget(self.from_list, widget_index, 1, 1, -1)
         self.set_pay_from([])
-        widget_index = 4
+        widget_index += 1
 
-        if hasattr(self.wallet, 'omni') and self.wallet.omni:
+        if omni_flag:
             self.amount_ex = OMNIAmountEdit(self.wallet.omni_decimal_point, self.wallet.omni_code)
 
             msg = _('Transaction currency (default is BTC)') + '\n\n' \
@@ -1211,22 +1241,22 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
         self.fiat_send_e = AmountEdit(self.fx.get_currency if self.fx else '')
         if not self.fx or not self.fx.is_enabled():
             self.fiat_send_e.setVisible(False)
-        if hasattr(self.wallet, 'omni') and self.wallet.omni:
+        if omni_flag:
             self.fiat_send_e.setVisible(False)
         grid.addWidget(self.fiat_send_e, widget_index, 2)
 
-        if not (hasattr(self.wallet, 'omni') and self.wallet.omni):
+        if not omni_flag:
             self.amount_e.frozen.connect(
                 lambda: self.fiat_send_e.setFrozen(self.amount_e.isReadOnly()))
 
         self.max_button = EnterButton(_("Max"), self.spend_max)
         self.max_button.setFixedWidth(140)
-        if hasattr(self.wallet, 'omni') and self.wallet.omni:
+        if omni_flag:
             self.max_button.setVisible(False)
         grid.addWidget(self.max_button, widget_index, 3)
         items = 4
 
-        if hasattr(self.wallet, 'omni') and self.wallet.omni:
+        if omni_flag:
             # self.amount_e.setVisible(False)
             grid.addWidget(self.amount_ex, widget_index, 2)
             # items += 1
@@ -1646,9 +1676,9 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
                     return
                 # substitute outputs with OMNI amount
                 omni_type = outputs[0].type
-                omni_address = outputs[0].address
+                omni_dst_address = outputs[0].address
                 omni_amount = int(self.amount_ex.get_amount())
-                outputs = [TxOutput(omni_type, omni_address, omni_amount)]
+                outputs = [TxOutput(omni_type, omni_dst_address, omni_amount)]
 
         for o in outputs:
             if o.address is None:
@@ -1678,7 +1708,12 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
         if btcSelected:
             self.amount_e.setAmount(0)
             self.amount_ex.setAmount(None)
+            if hasattr(self.wallet, 'omni') and self.wallet.omni:
+                self.omni_source_e.setText('')
+                self.omni_source_e.setFrozen(True)
         else:
+            self.omni_source_e.setText(self.wallet.omni_source)
+            self.omni_source_e.setFrozen(False)
             self.amount_e.setAmount(self.wallet.dust_threshold())
             self.amount_ex.setAmount(0)
         self.update_fee()
@@ -1740,12 +1775,12 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
         MAX_FEE_BTC = 0.0001
         max_fee = Decimal(MAX_FEE_BTC)
 
-        omni_balance = self.wallet.omni_addr_balance([self.wallet.omni_address])
+        omni_balance = self.wallet.omni_addr_balance([self.wallet.omni_source])
         if omni_balance == 0:
-            self.show_error(_('Zero balance for ') + self.wallet.omni_code)
+            self.show_error(_('Zero balance for ') + self.wallet.omni_code + _(" at ") + self.wallet.omni_source)
             return
         if omni_balance < amount:
-            self.show_error(_('Unsufficient funds ') + self.wallet.omni_code)
+            self.show_error(_('Unsufficient funds for ') + self.wallet.omni_code + _(" at ") + self.wallet.omni_source)
             return
 
         # fee_estimator = self.get_send_fee_estimator()
@@ -1754,9 +1789,9 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
             fee_estimator = partial(
                 simple_config.SimpleConfig.estimate_fee_for_feerate, self.wallet.relayfee())
 
-        utxos = self.wallet.get_addr_utxo(self.wallet.omni_address)
+        utxos = self.wallet.get_addr_utxo(self.wallet.omni_source)
         if len(utxos) == 0:
-            self.show_error(_('Absent unspent BTC for address ' + self.wallet.omni_address))
+            self.show_error(_('Absent unspent BTC for address ' + self.wallet.omni_source))
             return
 
         coins = []

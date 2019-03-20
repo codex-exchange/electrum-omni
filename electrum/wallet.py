@@ -230,6 +230,8 @@ class Abstract_Wallet(AddressSynchronizer):
             self.omni_skip_counter = 0
             self.omni_skip_max = 10
 
+            self.omni_source = self.omni_address
+
             # self.omni_daemon = RPCHostOmni()
             # self.omni_daemon.set_url(self.omni_host)
 

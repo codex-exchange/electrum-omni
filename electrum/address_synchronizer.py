@@ -86,6 +86,7 @@ class AddressSynchronizer(PrintError):
             else:
                 self.omni_daemon = None
             self.omni_tx = dict()
+            self.omni_balances = dict()
 
         self.history = storage.get('addr_history',{})
         # Verified transactions.  txid -> TxMinedInfo.  Access with self.lock.
@@ -239,30 +240,49 @@ class AddressSynchronizer(PrintError):
     def omni_txdata(self, txid, rawtx):
 
         if not hasattr(self, 'omni'):
-            return {}
+            return None
         if self.omni_host == '' or self.omni_daemon is None:
-            return {}
+            return None
         if rawtx is None:
-            return {}
+            return None
 
         try:
             val = self.omni_daemon.decodeTransaction(rawtx)
-            if val['error']:
-                return {}
+            d = val['error']
+            if d is not None:
+                if d['code'] == -5 and d['message'] == 'Not a Master Protocol transaction':
+                    return {}
+                return None
 
             res = val['result']
             # if not res['is_mine']:
             #     return {}
             if res['txid'] != txid:
-                return {}
+                return None
             out = dict()
             out['amount'] = res['amount']
             out['sender'] = res['sendingaddress']
             out['reference'] = res['referenceaddress']
             out['name'] = self.omni_getname(res['propertyid'])
             return out
-        except:
-            return {}
+        except Exception as e:
+            # print("omni_txdata", e)
+            return None
+
+    def omni_check_txs(self):
+        if not (hasattr(self, 'omni') and self.omni):
+            return False
+        for tx_hash in self.transactions:
+            if not tx_hash in self.verified_tx:
+                continue
+            if not tx_hash in self.omni_tx:
+                tx = self.transactions[tx_hash]
+                tx_data = self.omni_txdata(tx_hash, tx.raw)
+                if tx_data is not None:
+                    self.omni_tx[tx_hash] = tx_data
+                    self.storage.put('omni_tx', self.omni_tx)
+                return True # proceed just one tx per call
+        return False
 
     def add_transaction(self, tx_hash, tx, allow_unrelated=False):
         assert tx_hash, tx_hash
@@ -358,7 +378,10 @@ class AddressSynchronizer(PrintError):
             if hasattr(self, 'omni'):
                 # add omni tx data
                 if self.omni_host != '':
-                    self.omni_tx[tx_hash] = self.omni_txdata(tx_hash, tx.raw)
+                    tx_data = self.omni_txdata(tx_hash, tx.raw)
+                    if tx_data is not None:
+                        self.omni_tx[tx_hash] = tx_data
+                        self.storage.put('omni_tx', self.omni_tx)
 
             # add to local history
             self._add_tx_to_local_history(tx_hash)
@@ -574,7 +597,10 @@ class AddressSynchronizer(PrintError):
             try:
                 val = self.omni_daemon.getBalance(addr, int(self.omni_property))
                 res = val['result']
-                total += Decimal(res['balance'])
+                balance = Decimal(res['balance'])
+                if hasattr(self, 'omni_balances'):
+                    self.omni_balances[addr] = balance
+                total += balance
             except:
                 pass
         return total
@@ -788,14 +814,17 @@ class AddressSynchronizer(PrintError):
         # substract the value of coins sent from address
         if not tx_hash in self.omni_tx:
             return 0
-        tx_data = self.omni_tx[tx_hash]
-        if (not 'amount' in tx_data) or (not 'sender' in tx_data) or (not 'reference' in tx_data):
-            return 0
-        value = Decimal(tx_data['amount'])
-        if tx_data['sender'] == address:
-            return -value
-        if tx_data['reference'] == address:
-            return value
+
+        if tx_hash in self.verified_tx:
+            tx_data = self.omni_tx[tx_hash]
+            if (not 'amount' in tx_data) or (not 'sender' in tx_data) or (not 'reference' in tx_data):
+                return 0
+            value = Decimal(tx_data['amount'])
+            if tx_data['sender'] == address:
+                return -value
+            if tx_data['reference'] == address:
+                return value
+        # delta for unverified tx is 0
         return 0
 
 

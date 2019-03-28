@@ -86,6 +86,12 @@ from .installwizard import WIF_HELP_TEXT
 from .history_list import HistoryList, HistoryModel
 from .update_checker import UpdateCheck, UpdateCheckThread
 
+from electrum.paymentrequest import PR_PAID
+
+from operator import eq
+
+UPDATE_STATUS_COUNTER_MAX = 1
+
 
 class StatusBarButton(QPushButton):
     def __init__(self, icon, tooltip, func):
@@ -105,9 +111,6 @@ class StatusBarButton(QPushButton):
     def keyPressEvent(self, e):
         if e.key() == Qt.Key_Return:
             self.func()
-
-
-from electrum.paymentrequest import PR_PAID
 
 
 class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
@@ -163,6 +166,10 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
         self.num_zeros = int(config.get('num_zeros', 0))
 
         self.completions = QStringListModel()
+
+        # omni
+        self.source_list = list()
+        self.update_counter = 0
 
         self.tabs = tabs = QTabWidget(self)
         self.send_tab = self.create_send_tab()
@@ -258,7 +265,6 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
             self._update_check_thread.checked.connect(on_version_received)
             self._update_check_thread.start()
 
-        # self.omni_source_e = None
 
     def on_history(self, b):
         self.wallet.clear_coin_price_cache()
@@ -785,6 +791,8 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
         btc_e.textChanged.connect(partial(edit_changed, btc_e))
         fiat_e.is_last_edited = False
 
+
+
     def update_status(self):
         if not self.wallet:
             return
@@ -822,6 +830,16 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
                             self.wallet.storage.put('omni_address', self.wallet.omni_address)
                         omni_amount = self.wallet.omni_getbalance()
                         text += u" [%s]" % (omni_amount)
+
+                        # condition is equal to: counter == 0 or counter >= COUNTER_MAX
+                        if self.update_counter % UPDATE_STATUS_COUNTER_MAX == 0:
+                            self.update_counter = 0
+                            self.update_source_list()
+
+                            update_flag = self.wallet.omni_check_txs()
+                            if update_flag:
+                                self.need_update.set()
+                        self.update_counter += 1
 
                 # append fiat balance and price
                 if self.fx.is_enabled():
@@ -1141,6 +1159,33 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
         self.feerounding_text = (_('Additional {} satoshis are going to be added.')
                                  .format(num_satoshis_added))
 
+    def update_source_list(self):
+        source_list = list()
+        if hasattr(self.wallet, 'omni_balances'):
+            for addr, balance in self.wallet.omni_balances.items():
+                if balance > 0:
+                    source_list.append(addr)
+        if len(source_list) == 0:
+            source_list.append(self.wallet.omni_address)
+        az = sorted(self.source_list)
+        sz = sorted(source_list)
+        equal_flag = (len(az) == len(sz)) and all(map(eq, az, sz))
+        if not equal_flag:
+            # back up combo index selected
+            index = self.omni_source_combo.currentIndex()
+            if index >= 0:
+                addr = self.source_list[index]
+            self.source_list = source_list
+            self.omni_source_combo.clear()
+            self.omni_source_combo.addItems(self.source_list)
+
+            if index >= 0:
+                try:
+                    new_index = self.source_list.index(addr)
+                except ValueError as e:
+                    new_index = 0
+                self.omni_source_combo.setCurrentIndex(new_index)
+
     def create_send_tab(self):
         # A 4-column grid layout.  All the stretch is in the last column.
         # The exchange rate plugin adds a fiat widget in column 2
@@ -1154,25 +1199,35 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
 
         widget_index = 1
         if omni_flag:
-            omni_source_label = HelpLabel(_('Send from') + ':',
+            omni_source_label = HelpLabel(_('Pay from') + ':',
                                            _('OMNI Source Address for the Transaction'))
-            self.omni_source_e = MyLineEdit(self.wallet.omni_source)
 
-            def on_source_edit():
-                addr = str(self.omni_source_e.text())
-                if addr != '':
-                    if not bitcoin.is_address(addr):
-                        self.show_error(_("Invalid Source (Pay From) Address"))
-                        return
-                    if not (addr in self.wallet.get_addresses()):
-                        self.show_error(_("Unknown Source (Pay From) Address"))
-                        return
-                    self.wallet.omni_source = addr
-
-            self.omni_source_e.editingFinished.connect(on_source_edit)
+            self.omni_source_combo = QComboBox()
+            self.update_source_list()
+            self.omni_source_combo.addItems(self.source_list)
+            grid.addWidget(self.omni_source_combo, widget_index, 1, 1, -1)
+            self.on_omni_source_change()
+            self.omni_source_combo.currentIndexChanged.connect(self.on_omni_source_change)
 
             grid.addWidget(omni_source_label, widget_index, 0)
-            grid.addWidget(self.omni_source_e, widget_index, 1, 1, -1)
+            widget_index += 1
+
+            msg_omni = _('Balance (%s) of the source address') % self.wallet.omni_code
+            omni_balance_label = HelpLabel(_('Balance ') + self.wallet.omni_code, msg_omni)
+            grid.addWidget(omni_balance_label, widget_index, 0)
+
+            self.omni_source_balance_e = OMNIAmountEdit(self.wallet.omni_decimal_point, self.wallet.omni_code)
+            grid.addWidget(self.omni_source_balance_e, widget_index, 1)
+            self.omni_source_balance_e.setFrozen(True)
+            widget_index += 1
+
+            msg_btc = _('Balance (BTC) of the source address')
+            btc_balance_label = HelpLabel(_('Balance BTC'), msg_btc)
+            grid.addWidget(btc_balance_label, widget_index, 0)
+
+            self.btc_source_balance_e = BTCAmountEdit(self.get_decimal_point)
+            grid.addWidget(self.btc_source_balance_e, widget_index, 1)
+            self.btc_source_balance_e.setFrozen(True)
             widget_index += 1
 
         self.amount_e = BTCAmountEdit(self.get_decimal_point)
@@ -1211,7 +1266,7 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
                   + _(
                 'Currency could be choosen from [BTC, {OMNI\CurrencyCode}]')
             currency_label = HelpLabel(_('Currency'), msg)
-            grid.addWidget(currency_label, 4, 0)
+            grid.addWidget(currency_label, widget_index, 0)
 
             currencies = ["BTC", self.wallet.omni_code]
             self.cur_combo = QComboBox()
@@ -1701,6 +1756,26 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
         self.do_send(preview = True)
 
     # self.selector.currentIndexChanged.connect(self.on_currency_change)
+    def on_omni_source_change(self):
+        index = self.omni_source_combo.currentIndex()
+        if index < 0 and len(self.source_list) > 0:
+            index = 0
+        if 0 <= index < len(self.source_list):
+            addr = self.source_list[index]
+            if hasattr(self, 'omni_source_balance_e'):
+                if addr in self.wallet.omni_balances:
+                    omni_balance = self.wallet.omni_balances[addr]
+                else:  # fresh founded address, not yet pushed into the list
+                    omni_balance = self.wallet.omni_addr_balance([addr])
+                currency_amount = self.wallet.omni_format_amount(omni_balance)
+                currency_name = self.wallet.omni_getname(int(self.wallet.omni_property))
+                self.omni_source_balance_e.setText(currency_amount + _(" ") + currency_name)
+            if hasattr(self, 'btc_source_balance_e'):
+                c, u, x = self.wallet.get_balance([addr])
+                balance = c + u + x
+                self.btc_source_balance_e.setAmount(balance)
+
+
     def on_currency_change(self):
         btcSelected = self.cur_combo.currentIndex() == 0
         self.amount_e.setFrozen(not btcSelected)
@@ -1709,11 +1784,10 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
             self.amount_e.setAmount(0)
             self.amount_ex.setAmount(None)
             if hasattr(self.wallet, 'omni') and self.wallet.omni:
-                self.omni_source_e.setText('')
-                self.omni_source_e.setFrozen(True)
+                self.omni_source_combo.setDisabled(True)
         else:
-            self.omni_source_e.setText(self.wallet.omni_source)
-            self.omni_source_e.setFrozen(False)
+            if hasattr(self.wallet, 'omni') and self.wallet.omni:
+                self.omni_source_combo.setEnabled(True)
             self.amount_e.setAmount(self.wallet.dust_threshold())
             self.amount_ex.setAmount(0)
         self.update_fee()

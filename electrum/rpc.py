@@ -44,7 +44,12 @@ class RPCHostOmni():
         # confirm the response was received
         self.connected = True
         responseJSON = response.json()
+        if responseJSON is None:
+            raise Exception('JSON data absent in node response')
         if 'error' in responseJSON and responseJSON['error'] != None:
+            d = responseJSON['error']
+            if d['code'] == -5:
+                return responseJSON
             raise Exception('Error in ' + rpcMethod + ' RPC call: ' + str(responseJSON['error']))
         # return responseJSON['result']
         return responseJSON

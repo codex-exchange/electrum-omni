@@ -791,8 +791,6 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
         btc_e.textChanged.connect(partial(edit_changed, btc_e))
         fiat_e.is_last_edited = False
 
-
-
     def update_status(self):
         if not self.wallet:
             return
@@ -1892,7 +1890,9 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
                 tx = self.wallet.make_unsigned_transaction(
                     coins, tx.outputs(), self.config, fixed_fee=fee_estimator)
             except NotEnoughFunds:
-                self.show_error(_("Insufficient funds"))
+                msg = _("Insufficient funds")
+                # self.show_error(msg)
+                self.balance_label.setText(msg)
                 return
             except BaseException as e:
                 traceback.print_exc(file=sys.stdout)

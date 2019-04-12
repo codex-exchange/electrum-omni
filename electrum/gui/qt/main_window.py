@@ -93,6 +93,17 @@ from operator import eq
 UPDATE_STATUS_COUNTER_MAX = 1
 
 
+def sorted_list_of_strings(lst):
+    # convert list of objects to ordered list of strings
+    return sorted([str(dict(sorted(i.items()))) if isinstance(i, dict) else str(i) for i in lst])
+
+
+def lists_equal(lst1, lst2):
+    s1 = sorted_list_of_strings(lst1)
+    s2 = sorted_list_of_strings(lst2)
+    return (len(s1) == len(s2)) and all(map(eq, s1, s2))
+
+
 class StatusBarButton(QPushButton):
     def __init__(self, icon, tooltip, func):
         QPushButton.__init__(self, icon, '')
@@ -168,6 +179,11 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
         self.completions = QStringListModel()
 
         # omni
+        self.omni_cashed_addr = None
+        self.omni_cashed_amount = None
+        self.omni_cashed_coins = None
+        self.omni_cashed_tx = None
+
         self.source_list = list()
         self.update_counter = 0
 
@@ -1165,10 +1181,7 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
                     source_list.append(addr)
         if len(source_list) == 0:
             source_list.append(self.wallet.omni_address)
-        az = sorted(self.source_list)
-        sz = sorted(source_list)
-        equal_flag = (len(az) == len(sz)) and all(map(eq, az, sz))
-        if not equal_flag:
+        if not lists_equal(self.source_list, source_list):
             # back up combo index selected
             index = self.omni_source_combo.currentIndex()
             if index >= 0:
@@ -1871,7 +1884,17 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
             self.wallet.add_input_info(x)
             coins.append(x)
 
-        tx_hex = self.get_omni_tx(addr, amount, 0, coins)
+        if (self.omni_cashed_addr == addr) and (self.omni_cashed_amount == amount) and lists_equal(
+                self.omni_cashed_coins, coins):
+
+            tx_hex = self.omni_cashed_tx
+        else:
+            tx_hex = self.get_omni_tx(addr, amount, 0, coins)
+
+            self.omni_cashed_addr = addr
+            self.omni_cashed_amount = amount
+            self.omni_cashed_coins = coins
+            self.omni_cashed_tx = tx_hex
         if tx_hex is None:
             self.show_error(_("Error in building OMNI transaction"))
             return
@@ -1890,10 +1913,11 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
                 tx = self.wallet.make_unsigned_transaction(
                     coins, tx.outputs(), self.config, fixed_fee=fee_estimator)
             except NotEnoughFunds:
-                msg = _("Insufficient funds")
+                # msg = _("Insufficient funds")
                 # self.show_error(msg)
-                self.balance_label.setText(msg)
-                return
+                # self.balance_label.setText(msg)
+                # return
+                raise NotEnoughFunds()
             except BaseException as e:
                 traceback.print_exc(file=sys.stdout)
                 self.show_message(str(e))

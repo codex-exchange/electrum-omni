@@ -179,6 +179,11 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
         self.completions = QStringListModel()
 
         # omni
+        try:
+            self.omni_max_fee = Decimal(self.config.get('omni_max_fee', '0'))
+        except Exception:
+            self.show_error(_('Invalid OMNI max fee value in config'))
+            self.omni_max_fee = Decimal(0)
         self.omni_cashed_addr = None
         self.omni_cashed_amount = None
         self.omni_cashed_coins = None
@@ -1552,6 +1557,13 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
             btcFlag = True
             if hasattr(self.wallet, 'omni') and self.wallet.omni:
                 btcFlag = self.cur_combo.currentIndex() == 0
+                if not btcFlag:
+                    amount_ex = self.amount_ex.get_amount()
+                    r = self.payto_e.get_recipient()
+                    if r is None or amount_ex is None or amount_ex == 0:
+                        self.statusBar().showMessage('')
+                        return
+                    outputs = [TxOutput(r[0], r[1], amount_ex)]
             try:
                 tx = self.make_tx(outputs, fee_estimator, is_sweep, btcFlag)
                 self.not_enough_funds = False
@@ -1803,7 +1815,7 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
             self.amount_ex.setAmount(0)
         self.update_fee()
 
-    def get_omni_tx(self, addr, amount, max_fee, inputs=None):
+    def get_omni_tx(self, addr, amount, inputs=None):
         if addr is None:
             self.show_error(_('Bitcoin Address is None'))
             return
@@ -1824,7 +1836,6 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
             if payload['error']:
                 self.show_error(_('Error building payload: ' + payload['error']))
                 return
-
             hex_tx = ""
             for inp in coins:
                 omni_tx = self.wallet.omni_daemon.createRawTxInput(inp['prevout_hash'], inp['prevout_n'], hex_tx)
@@ -1838,6 +1849,7 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
                 self.show_error(_('Error building output OP_RETURN: ' + omni_tx['error']))
                 return
             hex_tx = omni_tx['result']
+
             omni_tx = self.wallet.omni_daemon.createRawTxReference(omni_address, hex_tx)
             if omni_tx['error']:
                 self.show_error(_('Error building output Reference: ' + omni_tx['error']))
@@ -1846,19 +1858,10 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
         except Exception as e:
             self.show_error(_('Error building OMNI tx: ' + str(e)))
             return
-        # substitute original outputs from JH
-        #outputs = self.get_outputs_from_rawtx(hex_tx)
-        #if not outputs:
-        #    self.show_error(_('Error parsing OMNI tx'))
-        #    return
 
         return hex_tx  #[coins, outputs]
 
     def build_omni_tx(self, addr, amount, estimator):
-
-        # hardcoded BTC fee max
-        MAX_FEE_BTC = 0.0001
-        max_fee = Decimal(MAX_FEE_BTC)
 
         omni_balance = self.wallet.omni_addr_balance([self.wallet.omni_source])
         if omni_balance == 0:
@@ -1886,10 +1889,9 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
 
         if (self.omni_cashed_addr == addr) and (self.omni_cashed_amount == amount) and lists_equal(
                 self.omni_cashed_coins, coins):
-
             tx_hex = self.omni_cashed_tx
         else:
-            tx_hex = self.get_omni_tx(addr, amount, 0, coins)
+            tx_hex = self.get_omni_tx(addr, amount, coins)
 
             self.omni_cashed_addr = addr
             self.omni_cashed_amount = amount
@@ -1904,11 +1906,9 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
 
         fee = None
 
-        max_fee_satoshi = int(max_fee * pow(10, 8))
-        while (not fee) or (fee > max_fee_satoshi):
+        max_fee_satoshi = int(self.omni_max_fee * pow(10, 8))
+        while not fee:
 
-            if fee and fee > max_fee_satoshi:
-                fee_estimator = max_fee_satoshi
             try:
                 tx = self.wallet.make_unsigned_transaction(
                     coins, tx.outputs(), self.config, fixed_fee=fee_estimator)
@@ -1924,6 +1924,9 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
                 return
 
             fee = tx.get_fee()
+            if fee and max_fee_satoshi > 0 and fee > max_fee_satoshi:
+                fee_estimator = max_fee_satoshi
+                fee = None
 
         use_rbf = self.config.get('use_rbf', True)
         if use_rbf:
@@ -3190,6 +3193,23 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
             self.fee_adv_controls.setVisible(bool(x))
         feebox_cb.stateChanged.connect(on_feebox)
         fee_widgets.append((feebox_cb, None))
+
+        if hasattr(self.wallet, 'omni') and self.wallet.omni:
+            omni_max_fee_label = HelpLabel(_('Max fee') + ':',
+                                            _('Max fee value for OMNI transactions or 0 if disabled'))
+            omni_max_fee_e = BTCAmountEdit(self.get_decimal_point)
+            omni_max_fee_e.setAmount(self.omni_max_fee)
+
+            def on_max_fee_edit():
+                max_fee = omni_max_fee_e.get_btc_amount()
+                if max_fee is None:
+                    self.show_error(_('Invalid value, not a number'))
+                    return
+                self.config.set_key('omni_max_fee', str(max_fee), True)
+                self.omni_max_fee = max_fee
+
+            omni_max_fee_e.editingFinished.connect(on_max_fee_edit)
+            fee_widgets.append((omni_max_fee_label, omni_max_fee_e))
 
         use_rbf = self.config.get('use_rbf', True)
         use_rbf_cb = QCheckBox(_('Use Replace-By-Fee'))

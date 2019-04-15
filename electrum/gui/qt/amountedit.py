@@ -40,7 +40,7 @@ class AmountEdit(MyLineEdit):
 
     def numbify(self):
         text = self.text().strip()
-        if text == '!':
+        if self.is_shortcut and text == '!':
             self.shortcut.emit()
             return
         pos = self.cursorPosition()
@@ -101,6 +101,21 @@ class BTCAmountEdit(AmountEdit):
             return max_prec_amount
         # otherwise, scale it back to the expected unit
         amount = Decimal(max_prec_amount) / pow(10, self.max_precision()-self.decimal_point())
+        return Decimal(amount) if not self.is_int else int(amount)
+
+    def get_btc_amount(self):
+        try:
+            x = Decimal(str(self.text()))
+        except:
+            return None
+        # scale it to max allowed precision, make it an int
+        power = pow(10, self.max_precision())
+        max_prec_amount = int(power * x)
+        # if the max precision is simply what unit conversion allows, just return
+        # if self.max_precision() == self.decimal_point():
+        #     return max_prec_amount
+        # otherwise, scale it back to the expected unit
+        amount = Decimal(max_prec_amount) / power
         return Decimal(amount) if not self.is_int else int(amount)
 
     def setAmount(self, amount):

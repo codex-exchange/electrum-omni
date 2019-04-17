@@ -3198,7 +3198,7 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
             omni_max_fee_label = HelpLabel(_('Max fee') + ':',
                                             _('Max fee value for OMNI transactions or 0 if disabled'))
             omni_max_fee_e = BTCAmountEdit(self.get_decimal_point)
-            omni_max_fee_e.setAmount(self.omni_max_fee)
+            omni_max_fee_e.setText("{:f}".format(self.omni_max_fee))
 
             def on_max_fee_edit():
                 max_fee = omni_max_fee_e.get_btc_amount()

@@ -91,6 +91,7 @@ from electrum.paymentrequest import PR_PAID
 from operator import eq
 
 UPDATE_STATUS_COUNTER_MAX = 1
+OMNI_MAX_FEE_DEFAULT = 10000000
 
 
 def sorted_list_of_strings(lst):
@@ -180,11 +181,11 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
 
         # omni
         try:
-            self.omni_max_fee = int(self.config.get('omni_max_fee', 0))
+            self.omni_max_fee = int(self.config.get('omni_max_fee', OMNI_MAX_FEE_DEFAULT))
         except Exception:
             self.show_error(_('Invalid OMNI max fee value in config'))
-            self.omni_max_fee = int(0)
-            self.config.set_key('omni_max_fee', 0, True)
+            self.omni_max_fee = int(OMNI_MAX_FEE_DEFAULT)
+            self.config.set_key('omni_max_fee', OMNI_MAX_FEE_DEFAULT, True)
         self.omni_cashed_addr = None
         self.omni_cashed_amount = None
         self.omni_cashed_coins = None

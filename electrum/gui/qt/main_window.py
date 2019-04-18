@@ -1580,7 +1580,8 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
                     self.not_enough_funds = True
                 elif isinstance(e, NoDynamicFeeEstimates):
                     try:
-                        tx = self.make_tx(outputs, fee_estimator, is_sweep, btcFlag)
+                        # force fee_estimator to 0
+                        tx = self.make_tx(outputs, 0, is_sweep, btcFlag)
                         size = tx.estimated_size()
                         self.size_e.setAmount(size)
                     except BaseException:
@@ -1703,7 +1704,7 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
         m = self.feerate_e.isModified()
         t = self.feerate_e.text()
         f = self.feerate_e.hasFocus()
-        return v and (t or f)
+        return v and m and (t or f)
 
     def get_send_fee_estimator(self):
         if self.is_send_fee_frozen():
@@ -1909,7 +1910,7 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
         fee = None
 
         max_fee_satoshi = self.omni_max_fee
-        while not fee:
+        while fee is None:
 
             try:
                 tx = self.wallet.make_unsigned_transaction(
@@ -1934,10 +1935,10 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
         if use_rbf:
             tx.set_rbf(True)
 
-        if fee < self.wallet.relayfee() * tx.estimated_size() / 1000:
-            self.show_error(_("This transaction requires a higher fee, "
-                                     "or it will not be propagated by the network"))
-            return
+        # if fee < self.wallet.relayfee() * tx.estimated_size() / 1000:
+        #     self.show_error(_("This transaction requires a higher fee, "
+        #                              "or it will not be propagated by the network"))
+        #     return
 
         return tx
 
@@ -3199,19 +3200,19 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
         if hasattr(self.wallet, 'omni') and self.wallet.omni:
             omni_max_fee_label = HelpLabel(_('Max fee') + ':',
                                             _('Max fee value for OMNI transactions or 0 if disabled'))
-            omni_max_fee_e = BTCAmountEdit(self.get_decimal_point)
-            omni_max_fee_e.setAmount(self.omni_max_fee)
+            self.omni_max_fee_e = BTCAmountEdit(self.get_decimal_point)
+            self.omni_max_fee_e.setAmount(self.omni_max_fee)
 
             def on_max_fee_edit():
-                max_fee = omni_max_fee_e.get_amount()
+                max_fee = self.omni_max_fee_e.get_amount()
                 if max_fee is None:
                     self.show_error(_('Invalid value, not a number'))
                     return
                 self.config.set_key('omni_max_fee', str(max_fee), True)
                 self.omni_max_fee = int(max_fee)
 
-            omni_max_fee_e.editingFinished.connect(on_max_fee_edit)
-            fee_widgets.append((omni_max_fee_label, omni_max_fee_e))
+            self.omni_max_fee_e.editingFinished.connect(on_max_fee_edit)
+            fee_widgets.append((omni_max_fee_label, self.omni_max_fee_e))
 
         use_rbf = self.config.get('use_rbf', True)
         use_rbf_cb = QCheckBox(_('Use Replace-By-Fee'))
@@ -3300,6 +3301,10 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
             if self.base_unit() == unit_result:
                 return
             edits = self.amount_e, self.fee_e, self.receive_amount_e
+            if hasattr(self.wallet, 'omni') and self.wallet.omni:
+                edits = list(edits)
+                edits.extend([self.btc_source_balance_e, self.omni_max_fee_e])
+                edits = tuple(edits)
             amounts = [edit.get_amount() for edit in edits]
             self.decimal_point = base_unit_name_to_decimal_point(unit_result)
             self.config.set_key('decimal_point', self.decimal_point, True)

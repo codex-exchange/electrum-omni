@@ -180,10 +180,11 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
 
         # omni
         try:
-            self.omni_max_fee = Decimal(self.config.get('omni_max_fee', '0'))
+            self.omni_max_fee = int(self.config.get('omni_max_fee', 0))
         except Exception:
             self.show_error(_('Invalid OMNI max fee value in config'))
-            self.omni_max_fee = Decimal(0)
+            self.omni_max_fee = int(0)
+            self.config.set_key('omni_max_fee', 0, True)
         self.omni_cashed_addr = None
         self.omni_cashed_amount = None
         self.omni_cashed_coins = None
@@ -1906,7 +1907,7 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
 
         fee = None
 
-        max_fee_satoshi = int(self.omni_max_fee * pow(10, 8))
+        max_fee_satoshi = self.omni_max_fee
         while not fee:
 
             try:
@@ -3198,15 +3199,15 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
             omni_max_fee_label = HelpLabel(_('Max fee') + ':',
                                             _('Max fee value for OMNI transactions or 0 if disabled'))
             omni_max_fee_e = BTCAmountEdit(self.get_decimal_point)
-            omni_max_fee_e.setText("{:f}".format(self.omni_max_fee))
+            omni_max_fee_e.setAmount(self.omni_max_fee)
 
             def on_max_fee_edit():
-                max_fee = omni_max_fee_e.get_btc_amount()
+                max_fee = omni_max_fee_e.get_amount()
                 if max_fee is None:
                     self.show_error(_('Invalid value, not a number'))
                     return
                 self.config.set_key('omni_max_fee', str(max_fee), True)
-                self.omni_max_fee = max_fee
+                self.omni_max_fee = int(max_fee)
 
             omni_max_fee_e.editingFinished.connect(on_max_fee_edit)
             fee_widgets.append((omni_max_fee_label, omni_max_fee_e))

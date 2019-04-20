@@ -1874,12 +1874,6 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
             self.show_error(_('Unsufficient funds for ') + self.wallet.omni_code + _(" at ") + self.wallet.omni_source)
             return
 
-        # fee_estimator = self.get_send_fee_estimator()
-        fee_estimator = estimator
-        if fee_estimator is None:
-            fee_estimator = partial(
-                simple_config.SimpleConfig.estimate_fee_for_feerate, self.wallet.relayfee())
-
         utxos = self.wallet.get_addr_utxo(self.wallet.omni_source)
         if len(utxos) == 0:
             self.show_error(_('Absent unspent BTC for address ' + self.wallet.omni_source))
@@ -1914,12 +1908,8 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
 
             try:
                 tx = self.wallet.make_unsigned_transaction(
-                    coins, tx.outputs(), self.config, fixed_fee=fee_estimator)
+                    coins, tx.outputs(), self.config, fixed_fee=estimator)
             except NotEnoughFunds:
-                # msg = _("Insufficient funds")
-                # self.show_error(msg)
-                # self.balance_label.setText(msg)
-                # return
                 raise NotEnoughFunds()
             except BaseException as e:
                 traceback.print_exc(file=sys.stdout)
@@ -1928,17 +1918,12 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
 
             fee = tx.get_fee()
             if fee and max_fee_satoshi > 0 and fee > max_fee_satoshi:
-                fee_estimator = max_fee_satoshi
+                estimator = max_fee_satoshi
                 fee = None
 
         use_rbf = self.config.get('use_rbf', True)
         if use_rbf:
             tx.set_rbf(True)
-
-        # if fee < self.wallet.relayfee() * tx.estimated_size() / 1000:
-        #     self.show_error(_("This transaction requires a higher fee, "
-        #                              "or it will not be propagated by the network"))
-        #     return
 
         return tx
 
@@ -3570,7 +3555,6 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
             omni_property_e = QLineEdit(self.wallet.storage.get('omni_property', ''))
 
             def on_property_edit():
-                #self.config.set_key('omni_property', str(omni_property_e.text()), True)
                 self.wallet.storage.put('omni_property', str(omni_property_e.text()))
                 self.wallet.omni_property = str(omni_property_e.text())
                 self.wallet.omni_name = ''
@@ -3583,7 +3567,6 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
             omni_code_e = QLineEdit(self.wallet.storage.get('omni_code', ''))
 
             def on_code_edit():
-                #self.config.set_key('omni_property', str(omni_property_e.text()), True)
                 self.wallet.storage.put('omni_code', str(omni_code_e.text()))
                 self.wallet.omni_code = str(omni_code_e.text())
 

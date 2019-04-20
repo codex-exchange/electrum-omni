@@ -210,8 +210,6 @@ class Abstract_Wallet(AddressSynchronizer):
         self.receive_requests      = storage.get('payment_requests', {})
 
         # omni
-        # self.omni                  = storage.get('omni', False)
-
         if self.omni:
             if self.use_change:
                 self.use_change = False
@@ -219,7 +217,6 @@ class Abstract_Wallet(AddressSynchronizer):
 
             self.omni_decimal_point = self.load_set_default('omni_decimal_point', 8)
             self.omni_address = self.load_set_default('omni_address', '')
-            # self.omni_host = self.load_set_default('omni_host', 'http://admin1:123@127.0.0.1:8361/')
             self.omni_balance = self.load_set_default('omni_balance', True)
             self.omni_property = self.load_set_default('omni_property', '31')
             self.omni_code = self.load_set_default('omni_code', 'USDT')
@@ -231,10 +228,6 @@ class Abstract_Wallet(AddressSynchronizer):
             self.omni_skip_max = 10
 
             self.omni_source = self.omni_address
-
-            # self.omni_daemon = RPCHostOmni()
-            # self.omni_daemon.set_url(self.omni_host)
-
 
         self.calc_unused_change_addresses()
 

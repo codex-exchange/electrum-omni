@@ -1800,6 +1800,8 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
                 c, u, x = self.wallet.get_balance([addr])
                 balance = c + u + x
                 self.btc_source_balance_e.setAmount(balance)
+            # update wallet parameters
+            self.wallet.omni_source = addr
 
 
     def on_currency_change(self):
@@ -1867,11 +1869,8 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
     def build_omni_tx(self, addr, amount, estimator):
 
         omni_balance = self.wallet.omni_addr_balance([self.wallet.omni_source])
-        if omni_balance == 0:
-            self.show_error(_('Zero balance for ') + self.wallet.omni_code + _(" at ") + self.wallet.omni_source)
-            return
         if omni_balance < amount:
-            self.show_error(_('Unsufficient funds for ') + self.wallet.omni_code + _(" at ") + self.wallet.omni_source)
+            self.show_error(_('Insufficient funds: ') + self.wallet.omni_code + _(" at ") + self.wallet.omni_source)
             return
 
         utxos = self.wallet.get_addr_utxo(self.wallet.omni_source)

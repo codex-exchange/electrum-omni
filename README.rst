@@ -22,8 +22,9 @@ Electrum-OMNI Lightweight Bitcoin & OMNI client
 
 Getting started
 ===============
-
-Electrum is a pure python application. If you want to use the
+To use this wallet you need have access to the OMNI node. After new wallet initalisation electrum node access credentials
+should be added to wallet settings (Preferences->OMNI->Daemon Url). Example: http://username:password@IP:port/.
+This is a pure python application. If you want to use the
 Qt interface, install the Qt dependencies::
 
     sudo apt-get install python3-pyqt5
